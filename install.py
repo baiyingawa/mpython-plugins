@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MPlugins for mPython v1.30 — 安装/更新脚本
+MPlugins for mPython v1.50 — 安装/更新脚本
 ===========================================
 自动查找 mPython 安装位置，备份原文件，安装或更新 MPlugins 插件框架。
 支持保存 mPython 位置配置，后续安装/更新无需重复搜索。
@@ -162,7 +162,7 @@ def ensure_backup_dir():
 
 def main():
     print("=" * 56)
-    print("  MPlugins for mPython  v1.30  安装/更新程序")
+    print("  MPlugins for mPython  v1.50  安装/更新程序")
     print("=" * 56)
     print()
 
@@ -251,7 +251,7 @@ def main():
     cfg.update({
         "mpython_root": root,
         "build_dir": build_dir,
-        "version": "1.30",
+        "version": "1.50",
     })
     save_config(cfg)
 

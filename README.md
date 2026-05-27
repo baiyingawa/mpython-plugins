@@ -1,6 +1,6 @@
 # MPlugins for mPython
 
-> 版本 v1.30 · mPython 插件框架 — 自动保存模块已集成
+> 版本 v1.50 · mPython 插件框架 — 自动保存模块已集成
 
 ## 功能
 
