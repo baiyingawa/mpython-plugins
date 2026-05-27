@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>MPlugins for mPython v1.30</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f0f1a;color:#e0e0e0;display:flex;justify-content:center;padding:40px 20px}
+.card{max-width:680px;width:100%;background:#1a1a2e;border:1px solid #0f3460;border-radius:8px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+h1{color:#e94560;font-size:22px;margin-bottom:4px}
+.sub{color:#666;font-size:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #0f3460}
+h2{color:#e94560;font-size:15px;margin:20px 0 10px}
+ul{list-style:none;padding:0}
+li{padding:4px 0;font-size:13px;color:#b0b0b0}
+li::before{content:"▸ ";color:#4ecdc4}
+ol{list-style:none;counter-reset:item;padding:0}
+ol li{counter-increment:item;padding:4px 0;font-size:13px;color:#b0b0b0}
+ol li::before{content:counter(item) ". ";color:#4ecdc4;font-weight:bold}
+.code{background:#0d0d1a;border:1px solid #0f3460;border-radius:4px;padding:10px 14px;font-size:12px;font-family:Consolas,monospace;color:#b0b0b0;margin:8px 0;line-height:1.6}
+.tag{display:inline-block;background:#0f3460;color:#4ecdc4;font-size:11px;padding:1px 8px;border-radius:3px;margin-right:4px}
+.note{background:#16213e;border-left:3px solid #ff9800;border-radius:4px;padding:10px 14px;font-size:12px;color:#ccc;margin:12px 0}
+hr{border:none;border-top:1px solid #0f3460;margin:20px 0}
+</style>
+</head>
+<body>
+<div class="card">
+
+<h1>MPlugins for mPython</h1>
+<div class="sub">版本 v1.30 &nbsp;·&nbsp; mPython 插件框架 — 自动保存模块已集成</div>
+
+<h2>功能</h2>
+<ul>
+<li>拖拽 Blockly 积木块时自动保存（1 秒防抖）</li>
+<li>仅图形化模式（.mxml），代码模式跳过</li>
+<li>选择文件：通过 [浏览] 按钮选取 .mxml 文件</li>
+<li>备份机制：每次保存同时写到 D:\mpython自动备份\</li>
+<li>文件切换防护：检测到切换文件时自动从备份还原旧文件</li>
+<li>启动提示：打开 mPython 时提示选择保存路径</li>
+</ul>
+
+<h2>安装</h2>
+<ol>
+<li>确保已安装 mPython（0.8.7 或以上版本）</li>
+<li>双击运行 install.py</li>
+</ol>
+<div class="code">install.py 将自动：<br>
+&nbsp;&nbsp;· 查找 mPython 安装位置<br>
+&nbsp;&nbsp;· 备份并修改 index.html<br>
+&nbsp;&nbsp;· 复制 mplugin-core.js（框架 + 自动保存模块）<br>
+&nbsp;&nbsp;· 创建 D:\mpython自动备份\</div>
+<li>启动 mPython</li>
+</ol>
+<div class="note">如果自动查找不到 mPython，脚本会提示手动输入安装路径。</div>
+
+<h2>卸载</h2>
+<p style="font-size:13px;color:#b0b0b0">双击运行 <span class="tag">uninstall.py</span>，自动还原 index.html 并删除插件文件。</p>
+
+<h2>文件说明</h2>
+<table style="width:100%;font-size:12px;border-collapse:collapse;margin:8px 0">
+<tr><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#4ecdc4">mplugin-core.js</td><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#b0b0b0">插件框架 + 自动保存模块</td></tr>
+<tr><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#4ecdc4">install.py</td><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#b0b0b0">安装 / 更新脚本</td></tr>
+<tr><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#4ecdc4">uninstall.py</td><td style="padding:6px 8px;border-bottom:1px solid #0f3460;color:#b0b0b0">卸载脚本</td></tr>
+<tr><td style="padding:6px 8px;color:#4ecdc4">README.html</td><td style="padding:6px 8px;color:#b0b0b0">本文件</td></tr>
+</table>
+
+<h2>依赖</h2>
+<ul>
+<li>Windows 系统</li>
+<li>Python 3.x（安装脚本运行需要）</li>
+<li>mPython 0.8.7+</li>
+</ul>
+
+<h2>注意事项</h2>
+<div class="note">安装后首次启动顶栏会提示"请点击[浏览]选择保存路径"</div>
+<div class="note">每次启动路径为空，需重新选择（防止误保存）</div>
+<div class="note">备份目录 D:\mpython自动备份\ 需确保有写入权限</div>
+<div class="note">如果自动备份失败，检查该目录是否存在</div>
+
+<hr>
+<p style="text-align:center;color:#555;font-size:11px">AutoSave for mPython &nbsp;·&nbsp; 项目地址: E:\workbuddy\MpythonAutoSave</p>
+
+</div>
+</body>
+</html>
