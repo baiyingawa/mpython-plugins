@@ -121,15 +121,3 @@ window.mqttHelper.openFile(path)   // 在 mPython 中打开文件
        │          (MQTT客户端)           │  (浏览器 :8000)   │
        └─── 终端设备 (掌控板等)           └──────────────────┘
 ```
-
----
-
-## 六、开发规范
-
-| 规则 | 说明 |
-|------|------|
-| 版本号 | `version.txt` 唯一源 |
-| 打包 | 手动 `build.py --pack`，不自动构建 |
-| Git | `mqtt/mosquitto/bin/` 排除（install_mqtt.py 下载） |
-| 发布 | 仅用户说"打包并发布"才操作 GitHub Releases |
-| Mosquitto | 安装时下载，不打包进代码 |
