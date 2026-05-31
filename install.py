@@ -6,7 +6,7 @@ MPlugins for mPython v1.60 — 安装/更新脚本
 自动查找 mPython 安装位置，备份原文件，安装或更新 MPlugins 插件框架。
 支持保存 mPython 位置配置，后续安装/更新无需重复搜索。
 """
-import os, sys, shutil, json, subprocess, urllib.request, urllib.error, platform
+import os, sys, shutil, json, subprocess, urllib.request, urllib.error, platform, zipfile
 
 PACKAGE_DIR   = os.path.dirname(os.path.abspath(__file__))
 CFG_FILE      = os.path.join(os.path.expanduser("~"), ".mpython_autosave", "mpython_cfg.json")
@@ -177,12 +177,9 @@ MQTT_DIR    = os.path.join(PACKAGE_DIR, "mqtt")
 MOSQ_DIR    = os.path.join(MQTT_DIR, "mosquitto")
 MOSQ_BIN    = os.path.join(MOSQ_DIR, "bin")
 VENV_DIR    = os.path.join(MQTT_DIR, "venv")
-MOSQ_VER    = "2.1.2"
-# Mosquitto 安装包来源（EPL-2.0 开源协议，免费分发）
-# 从独立 Release 下载，插件版本更新不影响下载地址
-MOSQ_URL    = f"https://github.com/baiyingawa/mpython-plugins/releases/download/mosquitto-installer/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
-MOSQ_MIRROR = f"https://mosquitto.org/files/binary/win64/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
-MOSQ_EXE    = os.path.join(MQTT_DIR, f"mosquitto-{MOSQ_VER}-install.exe")
+# Mosquitto 二进制压缩包（已预提取，不含安装器）
+# 来源：GitHub Release → 下载解压即用，无需管理员权限
+MOSQ_BIN_URL = "https://github.com/baiyingawa/mpython-plugins/releases/download/mosquitto-installer/mosquitto-bin.zip"
 
 
 def _download(url, dest):
@@ -200,85 +197,11 @@ def _download(url, dest):
     try:
         urllib.request.urlretrieve(url, dest, _progress)
         size = os.path.getsize(dest)
-        if size > 1024*1024:
-            print(f"\r  ✓ 下载完成 ({size/(1024*1024):.2f}MB)")
-        else:
-            print(f"\r  ✓ 下载完成 ({size//1024}KB)")
+        print(f"\r  ✓ 下载完成 ({size/(1024*1024):.2f}MB)")
         return True
     except Exception as e:
         print(f"\r  ✗ 下载失败: {e}")
         return False
-
-
-def _extract_installer(exe_path, out_dir):
-    """从 NSIS 安装包中提取 exe/dll 文件"""
-    # 通用 subprocess 参数（兼容 Python 3.6+，capture_output 是 3.7 才加的）
-    _PIPE = subprocess.PIPE
-
-    # 1) 7-Zip（最快）
-    for prog in [
-        r"C:\Program Files\7-Zip\7z.exe",
-        r"C:\Program Files (x86)\7-Zip\7z.exe",
-        r"C:\Program Files\AMD\AMDInstallManager\7z.exe",
-    ]:
-        if os.path.isfile(prog):
-            print("  使用 7-Zip 解压...")
-            try:
-                r = subprocess.run([prog, "x", exe_path, f"-o{out_dir}", "-y"], stdout=_PIPE, stderr=_PIPE, timeout=30)
-                if r.returncode == 0:
-                    return True
-            except Exception:
-                pass
-
-    # 2) NSIS 静默安装（最可靠——NSIS 安装器都支持 /S /D=）
-    print("  使用静默安装提取...")
-    install_dir = os.path.join(os.path.dirname(out_dir), "_mos_install_dir")
-    if os.path.isdir(install_dir):
-        shutil.rmtree(install_dir, ignore_errors=True)
-    os.makedirs(install_dir, exist_ok=True)
-    try:
-        subprocess.run([exe_path, "/S", f"/D={install_dir}"], timeout=120, stdout=_PIPE, stderr=_PIPE)
-        # 等待安装完成（NSIS 后台安装，需要等一会）
-        import time
-        time.sleep(4)
-        copied = 0
-        for root, dirs, files in os.walk(install_dir):
-            for f in files:
-                if f.endswith(".exe") or f.endswith(".dll"):
-                    shutil.copy2(os.path.join(root, f), os.path.join(out_dir, f))
-                    copied += 1
-        shutil.rmtree(install_dir, ignore_errors=True)
-        if copied >= 5:
-            print(f"  ✓ 静默安装提取成功 ({copied} 文件)")
-            return True
-        print(f"  静默安装提取不完整 ({copied} 文件)，尝试备用方案")
-    except Exception as e:
-        print(f"  静默安装失败: {e}")
-
-    # 3) PowerShell COM（备用）
-    print("  使用 PowerShell 解压...")
-    try:
-        ps_cmd = (
-            f'$s = New-Object -ComObject Shell.Application; '
-            f'$z = $s.Namespace("{exe_path}"); '
-            f'if (-not $z) {{ Write-Output "NAMESPACE_FAIL"; exit 1 }}; '
-            f'$t = $s.Namespace("{out_dir}"); '
-            f'$t.CopyHere($z.Items(), 0x14); '
-            f'Start-Sleep 3'
-        )
-        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], timeout=120, stdout=_PIPE, stderr=_PIPE)
-        if r.returncode != 0:
-            out = (r.stdout or b'').decode('utf-8', errors='replace').strip()
-            if 'NAMESPACE_FAIL' in out:
-                print("  PowerShell 无法打开安装包（NSIS 格式不兼容）")
-            return False
-        count = len([n for n in os.listdir(out_dir) if n.endswith(".exe") or n.endswith(".dll")])
-        if count >= 5:
-            return True
-        print(f"  解压结果: {count} 文件")
-    except Exception as e:
-        print(f"  解压异常: {e}")
-    return False
 
 
 def install_mosquitto():
@@ -289,25 +212,28 @@ def install_mosquitto():
     if os.path.isfile(os.path.join(MOSQ_BIN, "mosquitto.exe")):
         print("  ✓ Mosquitto 已安装，跳过下载")
         return True
-    if not os.path.isfile(MOSQ_EXE):
-        if not _download(MOSQ_URL, MOSQ_EXE):
-            print("  尝试官方源下载...")
-            if not _download(MOSQ_MIRROR, MOSQ_EXE):
-                print(f"  ✗ 下载失败，请手动下载: {MOSQ_URL}\n    放置到: {MOSQ_EXE}")
-                return False
-    temp_dir = os.path.join(MQTT_DIR, "_mos_extract")
-    if os.path.isdir(temp_dir):
-        shutil.rmtree(temp_dir)
-    os.makedirs(temp_dir)
-    if not _extract_installer(MOSQ_EXE, temp_dir):
-        print("  ✗ 解压失败")
+    # 下载二进制 zip
+    zip_path = os.path.join(MQTT_DIR, "mosquitto-bin.zip")
+    if not os.path.isfile(zip_path):
+        if not _download(MOSQ_BIN_URL, zip_path):
+            print("  ✗ 下载失败")
+            return False
+    # 解压到 bin 目录
+    print("  解压中...")
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(MOSQ_BIN)
+    except Exception as e:
+        print(f"  ✗ 解压失败: {e}")
         return False
-    for f in os.listdir(temp_dir):
-        if f.endswith(".exe") or f.endswith(".dll"):
-            shutil.copy2(os.path.join(temp_dir, f), os.path.join(MOSQ_BIN, f))
-    shutil.rmtree(temp_dir)
-    if os.path.isfile(os.path.join(MOSQ_BIN, "mosquitto.exe")):
-        print(f"  ✓ Mosquitto v{MOSQ_VER} 安装完成 ({len(os.listdir(MOSQ_BIN))} 文件)")
+    # 清理压缩包
+    try:
+        os.remove(zip_path)
+    except: pass
+    # 验证
+    count = len([n for n in os.listdir(MOSQ_BIN) if n.endswith(".exe") or n.endswith(".dll")])
+    if count >= 5:
+        print(f"  ✓ Mosquitto 安装完成 ({count} 文件)")
         return True
     print("  ✗ 安装不完整")
     return False
