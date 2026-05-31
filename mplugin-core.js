@@ -790,6 +790,19 @@
       var mqttEls = {};
       var _iotStopTriggered = false;
 
+      // 子进程执行封装（nodeIntegration: true, 直接 require child_process）
+      var _cpExec = null;
+      try { _cpExec = require('child_process').exec; } catch(e) {}
+      function execAsync(cmd) {
+        return new Promise(function(resolve, reject) {
+          if (!_cpExec) { reject('child_process 不可用'); return; }
+          _cpExec(cmd, { maxBuffer: 1024 * 1024, cwd: scriptDir, windowsHide: true }, function(error, stdout, stderr) {
+            if (error) reject(error.message + '\nstderr:' + stderr);
+            else resolve(stdout);
+          });
+        });
+      }
+
       // MQTT 积木模板
       var MQTT_BLOCK_XML =
         '<block type="mqtt_common_setup" id="mqtt_auto_{ID}" x="{X}" y="{Y}">' +
@@ -893,11 +906,14 @@
           api.saveFile(savePath, mergedXml, savePath);
           api.log('注入: 已保存 ' + savePath);
 
-          // 8. 打开
-          if (window.mqttHelper && typeof window.mqttHelper.openFile === 'function') {
-            window.mqttHelper.openFile(savePath);
-            api.log('注入: 已打开');
-          }
+          // 8. 打开文件（尝试用 Electron shell 打开，不可用则跳过）
+          try {
+            var _shell = require('electron').shell;
+            if (_shell && typeof _shell.openPath === 'function') {
+              _shell.openPath(savePath);
+              api.log('注入: 已打开');
+            }
+          } catch(e) { api.log('注入: 文件已保存，请手动打开'); }
 
           api.log('注入完成');
         } catch(e) { api.err('注入失败:', e.message); }
@@ -907,15 +923,14 @@
         _iotStopTriggered = false;
         api.log('启动中...');
         api.setTime('MQTT启动...', '#ff9800');
-        try {
-          window.mqttHelper.exec('"' + python + '" "' + script + '" start').then(function(out) {
-            try { var info = JSON.parse(out.trim().split('\n').pop()); } catch(e) { api.err('解析输出失败:', e.message); return; }
-            if (info.status === 'starting' || info.backend_url) {
-              var url = info.backend_url || 'http://127.0.0.1:8000';
-              var mqttIp = info.mqtt_host || '127.0.0.1';
-              api.setTime('MQTT ' + mqttIp + ':1883', '#4caf50');
-              api.showNotice(mqttIp + ':1883 | 后端:' + url, '#4caf50');
-              api.log('IoT 服务已启动 (' + mqttIp + ':1883)');
+        execAsync('"' + python + '" "' + script + '" start').then(function(out) {
+          try { var info = JSON.parse(out.trim().split('\n').pop()); } catch(e) { api.err('解析输出失败:', e.message); return; }
+          if (info.status === 'starting' || info.backend_url) {
+            var url = info.backend_url || 'http://127.0.0.1:8000';
+            var mqttIp = info.mqtt_host || '127.0.0.1';
+            api.setTime('MQTT ' + mqttIp + ':1883', '#4caf50');
+            api.showNotice(mqttIp + ':1883 | 后端:' + url, '#4caf50');
+            api.log('IoT 服务已启动 (' + mqttIp + ':1883)');
               // 自动注入 MQTT 连接积木（需先设置自动保存路径）
               var autoCache = null;
               try { var d = localStorage.getItem('mplugin_autosave_mxml'); autoCache = d ? JSON.parse(d) : null; } catch(e) {}
@@ -940,31 +955,20 @@
               if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
             }
           });
-        } catch(e) { api.err('mqttHelper不可用:', e.message);
-          if (!_iotStopTriggered) {
-            var m = MP.get('iot'); if (m) m.busy = false;
-            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
-          }
         }
-      }
 
       function stopAll() {
         api.log('停止中...');
-        try {
-          window.mqttHelper.exec('"' + python + '" "' + script + '" stop').then(function(out) {
-            api.setTime('');
-            api.hideNotice();
-            api.log('IoT 服务已停止');
-          }).catch(function(err) {
-            api.err('停止失败:', err);
-          }).then(function() {
-            var m = MP.get('iot'); if (m) m.busy = false;
-            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
-          });
-        } catch(e) { api.err('mqttHelper不可用:', e.message);
+        execAsync('"' + python + '" "' + script + '" stop').then(function(out) {
+          api.setTime('');
+          api.hideNotice();
+          api.log('IoT 服务已停止');
+        }).catch(function(err) {
+          api.err('停止失败:', err);
+        }).then(function() {
           var m = MP.get('iot'); if (m) m.busy = false;
           if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
-        }
+        });
       }
 
       function toggleIot() {
