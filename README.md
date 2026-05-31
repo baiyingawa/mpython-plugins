@@ -2,67 +2,82 @@
 
 > **本插件为 AI 辅助开发**
 >
-> 版本 v1.50 · mPython 插件框架 — 自动保存模块已集成
+> 版本 v1.60 · mPython 插件框架 — 自动保存 + IoT MQTT
 
 ## 功能
 
+### 🔄 自动保存
 - 拖拽 Blockly 积木块时自动保存（1 秒防抖）
 - 仅图形化模式（.mxml），代码模式跳过
 - 选择文件：通过 [浏览] 按钮选取 .mxml 文件
 - 备份机制：每次保存同时写到 `D:\mpython自动备份\`
+- 5 分钟快照备份（最多 100 个轮换）
 - 文件切换防护：检测到切换文件时自动从备份还原旧文件
-- 启动提示：打开 mPython 时提示选择保存路径
+- 快照数量显示、备份目录浏览
+
+### 📡 IoT MQTT 服务器
+- **一键启停** Mosquitto MQTT Broker（面板开关）
+- **Web 后端** FastAPI + WebSocket，端口 8000
+- **自动注入** MQTT 连接积木到程序中心
+- **IP 检测** 自动获取本机 LAN IP 填入积木
+- **智能更新** 已有积木则自动修正 IP，不重复添加
+- **忙状态锁定** 启停期间按钮灰色不可点
+
+### 🌐 Web 仪表盘
+- 通用可配置 MQTT 面板（`http://本机IP:8000`）
+- 6 种视图：折线图、数值、状态、文本日志、按钮、滑块
+- 用户自定义主题（增删改、方向、显示方式）
+- WebSocket 实时数据流
+- 配置持久化
 
 ## 安装
 
-1. 确保已安装 mPython（0.8.7 或以上版本）
-2. 双击运行 `install.py`
+### 基础插件
+```bash
+# 1. 安装插件框架
+python install.py
 
-```
-install.py 将自动：
-  · 查找 mPython 安装位置
-  · 备份并修改 index.html
-  · 复制 mplugin-core.js（框架 + 自动保存模块）
-  · 创建 D:\mpython自动备份\
+# 2. 启动 mPython，顶栏出现 MPlugins 插件栏
 ```
 
-> 如果自动查找不到 mPython，脚本会提示手动输入安装路径。
+### MQTT / IoT 功能（可选）
+```bash
+# 在安装插件后，额外执行：
+python install_mqtt.py
 
-## 卸载
+# 自动完成：
+#   · 下载 Mosquitto MQTT Broker
+#   · 创建 Python 虚拟环境
+#   · 安装后端依赖（FastAPI + aiomqtt）
+```
 
-双击运行 `uninstall.py`，自动还原 index.html 并删除插件文件。
+## MQTT 账号
+
+| 用户 | 密码 | 权限 |
+|------|------|------|
+| `zkb` | `zkb1234` | 所有主题读写 |
+| `web` | `web233` | 所有主题读写 |
 
 ## 文件说明
 
 | 文件 | 说明 |
 |------|------|
-| mplugin-core.js | 插件框架 + 自动保存模块 |
-| install.py | 安装 / 更新脚本 |
-| uninstall.py | 卸载脚本 |
-| README.md | 本文件 |
+| `mplugin-core.js` | 插件框架（自动保存 + IoT MQTT 模块） |
+| `install.py` | 基础安装/更新脚本 |
+| `uninstall.py` | 卸载脚本 |
+| `install_mqtt.py` | MQTT 环境安装（下载 Mosquitto + 创建 venv） |
+| `mqtt/` | MQTT 后端（server_manager.py + config.py + web 面板等） |
+
+## 项目文档
+
+详见 [`MpythonPlugins-project.md`](./MpythonPlugins-project.md)
 
 ## 依赖
 
 - Windows 系统
-- Python 3.x（安装脚本运行需要）
+- Python 3.x
 - mPython 0.8.7+
 
-## 注意事项
+## 免责声明
 
-> 安装后首次启动顶栏会提示"请点击[浏览]选择保存路径"
-
-> 每次启动路径为空，需重新选择（防止误保存）
-
-> 备份目录 D:\mpython自动备份\ 需确保有写入权限
-
-> 如果自动备份失败，检查该目录是否存在
-
----
-
-*AutoSave for mPython*
-
----
-
-> **免责声明**
->
 > 本插件由 AI 辅助开发完成，仅供学习交流使用。
