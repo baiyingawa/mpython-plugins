@@ -34,17 +34,15 @@
 
 ### 基础插件
 ```bash
-# 一键安装全部功能（插件框架 + MQTT 环境）
-python install_mqtt.py
-# 或仅安装插件框架：
+# 一键安装全部功能（插件框架 + Mosquitto + Python 后端）
 python install.py
 ```
 
-安装 `install_mqtt.py` 自动完成：
+安装脚本自动完成：
+- 安装插件框架到 mPython
 - 下载 Mosquitto MQTT Broker
 - 创建 Python 虚拟环境
 - 安装后端依赖（FastAPI + aiomqtt）
-- 安装插件框架到 mPython
 
 ## MQTT 账号
 
