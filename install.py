@@ -171,8 +171,8 @@ MOSQ_BIN    = os.path.join(MOSQ_DIR, "bin")
 VENV_DIR    = os.path.join(MQTT_DIR, "venv")
 MOSQ_VER    = "2.1.2"
 # Mosquitto 安装包来源（EPL-2.0 开源协议，免费分发）
-# 优先从 GitHub Release 下载（国内访问更快），失败自动切官方源
-MOSQ_URL    = f"https://github.com/baiyingawa/mpython-plugins/releases/download/v{MOSQ_VER}/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
+# 从独立 Release 下载，插件版本更新不影响下载地址
+MOSQ_URL    = f"https://github.com/baiyingawa/mpython-plugins/releases/download/mosquitto-installer/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
 MOSQ_MIRROR = f"https://mosquitto.org/files/binary/win64/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
 MOSQ_EXE    = os.path.join(MQTT_DIR, f"mosquitto-{MOSQ_VER}-install.exe")
 
