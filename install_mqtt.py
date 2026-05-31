@@ -149,16 +149,34 @@ def install_venv():
 
 def main():
     print()
-    print(f"  MPlugins — MQTT 环境安装")
+    print(f"  MPlugins — 一键安装（插件框架 + MQTT 环境）")
     print(f"  项目: {PACKAGE_DIR}")
     print()
 
+    # 1. 安装插件框架
+    print("  --- 安装插件框架 ---")
+    try:
+        # 导入并执行 install.py 的安装逻辑
+        sys.path.insert(0, PACKAGE_DIR)
+        import install
+        # 接管 install.py 的 main，重定向 print 捕获其输出（直接运行即可）
+        old_stdin = sys.stdin
+        from io import StringIO
+        sys.stdin = StringIO("y\n")  # 自动确认
+        install.main()
+        sys.stdin = old_stdin
+    except Exception as e:
+        print(f"  插件安装跳过或已存在: {e}")
+
+    # 2. 下载 Mosquitto
     install_mosquitto()
+
+    # 3. Python 虚拟环境
     install_venv()
 
     print()
     print("=" * 56)
-    print("  ✓ 安装完成！")
+    print("  ✓ 全部安装完成！")
     print()
     print("  使用方法:")
     print("    1. 启动 mPython")
