@@ -170,7 +170,8 @@ MOSQ_DIR    = os.path.join(MQTT_DIR, "mosquitto")
 MOSQ_BIN    = os.path.join(MOSQ_DIR, "bin")
 VENV_DIR    = os.path.join(MQTT_DIR, "venv")
 MOSQ_VER    = "2.1.2"
-MOSQ_URL    = f"https://mosquitto.org/files/binary/win64/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
+MOSQ_URL    = f"https://github.com/baiyingawa/mpython-plugins/releases/download/v{MOSQ_VER}/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
+MOSQ_MIRROR = f"https://mosquitto.org/files/binary/win64/mosquitto-{MOSQ_VER}-install-windows-x64.exe"
 MOSQ_EXE    = os.path.join(MQTT_DIR, f"mosquitto-{MOSQ_VER}-install.exe")
 
 
@@ -224,8 +225,10 @@ def install_mosquitto():
         return True
     if not os.path.isfile(MOSQ_EXE):
         if not _download(MOSQ_URL, MOSQ_EXE):
-            print(f"  ✗ 下载失败，请手动下载: {MOSQ_URL}\n    放置到: {MOSQ_EXE}")
-            return False
+            print("  尝试官方源下载...")
+            if not _download(MOSQ_MIRROR, MOSQ_EXE):
+                print(f"  ✗ 下载失败，请手动下载: {MOSQ_URL}\n    放置到: {MOSQ_EXE}")
+                return False
     temp_dir = os.path.join(MQTT_DIR, "_mos_extract")
     if os.path.isdir(temp_dir):
         shutil.rmtree(temp_dir)
