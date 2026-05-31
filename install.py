@@ -212,6 +212,9 @@ def _download(url, dest):
 
 def _extract_installer(exe_path, out_dir):
     """从 NSIS 安装包中提取 exe/dll 文件"""
+    # 通用 subprocess 参数（兼容 Python 3.6+，capture_output 是 3.7 才加的）
+    _PIPE = subprocess.PIPE
+
     # 1) 7-Zip（最快）
     for prog in [
         r"C:\Program Files\7-Zip\7z.exe",
@@ -220,9 +223,12 @@ def _extract_installer(exe_path, out_dir):
     ]:
         if os.path.isfile(prog):
             print("  使用 7-Zip 解压...")
-            r = subprocess.run([prog, "x", exe_path, f"-o{out_dir}", "-y"], capture_output=True, timeout=30)
-            if r.returncode == 0:
-                return True
+            try:
+                r = subprocess.run([prog, "x", exe_path, f"-o{out_dir}", "-y"], stdout=_PIPE, stderr=_PIPE, timeout=30)
+                if r.returncode == 0:
+                    return True
+            except Exception:
+                pass
 
     # 2) NSIS 静默安装（最可靠——NSIS 安装器都支持 /S /D=）
     print("  使用静默安装提取...")
@@ -231,10 +237,10 @@ def _extract_installer(exe_path, out_dir):
         shutil.rmtree(install_dir, ignore_errors=True)
     os.makedirs(install_dir, exist_ok=True)
     try:
-        subprocess.run([exe_path, "/S", f"/D={install_dir}"], timeout=120, capture_output=True)
-        # 等待安装完成（NSIS 异步返回，等一会）
+        subprocess.run([exe_path, "/S", f"/D={install_dir}"], timeout=120, stdout=_PIPE, stderr=_PIPE)
+        # 等待安装完成（NSIS 后台安装，需要等一会）
         import time
-        time.sleep(3)
+        time.sleep(4)
         copied = 0
         for root, dirs, files in os.walk(install_dir):
             for f in files:
@@ -251,16 +257,21 @@ def _extract_installer(exe_path, out_dir):
 
     # 3) PowerShell COM（备用）
     print("  使用 PowerShell 解压...")
-    ps_cmd = (
-        f'$s = New-Object -ComObject Shell.Application; '
-        f'$z = $s.Namespace("{exe_path}"); '
-        f'if (-not $z) {{ exit 1 }}; '
-        f'$t = $s.Namespace("{out_dir}"); '
-        f'$t.CopyHere($z.Items(), 0x14); '
-        f'Start-Sleep 3'
-    )
     try:
-        subprocess.run(["powershell", "-Command", ps_cmd], timeout=120)
+        ps_cmd = (
+            f'$s = New-Object -ComObject Shell.Application; '
+            f'$z = $s.Namespace("{exe_path}"); '
+            f'if (-not $z) {{ Write-Output "NAMESPACE_FAIL"; exit 1 }}; '
+            f'$t = $s.Namespace("{out_dir}"); '
+            f'$t.CopyHere($z.Items(), 0x14); '
+            f'Start-Sleep 3'
+        )
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], timeout=120, stdout=_PIPE, stderr=_PIPE)
+        if r.returncode != 0:
+            out = (r.stdout or b'').decode('utf-8', errors='replace').strip()
+            if 'NAMESPACE_FAIL' in out:
+                print("  PowerShell 无法打开安装包（NSIS 格式不兼容）")
+            return False
         count = len([n for n in os.listdir(out_dir) if n.endswith(".exe") or n.endswith(".dll")])
         if count >= 5:
             return True
