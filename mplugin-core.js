@@ -108,6 +108,10 @@
   /** 创建顶栏，返回 modules 插槽的 DOM 引用 */
   function createBar() {
     try {
+      // 清理旧版 autosave-bar 残留（旧版升级用户）
+      var oldBar = document.getElementById('autosave-bar');
+      if (oldBar) { oldBar.parentNode.removeChild(oldBar); }
+
       if (gel('mplugin-bar')) { refreshEls(); return gel('mplugin-bar'); }
       var bar = document.createElement('div');
       bar.id = 'mplugin-bar';
