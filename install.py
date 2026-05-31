@@ -42,6 +42,7 @@ def find_mpython(saved_root=None):
 
     candidates += [
         "D:/APP DATA/mPython",
+        "D:/mPython",
         "D:/Program Files/mPython",
         "C:/Program Files/mPython",
         "C:/Program Files (x86)/mPython",
