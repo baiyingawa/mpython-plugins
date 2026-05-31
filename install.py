@@ -175,14 +175,22 @@ MOSQ_EXE    = os.path.join(MQTT_DIR, f"mosquitto-{MOSQ_VER}-install.exe")
 
 
 def _download(url, dest):
-    print(f"  下载 Mosquitto...")
+    print(f"  下载 Mosquitto...", end='', flush=True)
+    last_pct = -1
+    def _progress(b, bs, ts):
+        nonlocal last_pct
+        if ts > 0:
+            pct = int(b * bs * 100 / ts)
+            if pct != last_pct and pct % 5 == 0:
+                last_pct = pct
+                print(f"\r  下载中 {pct}% ({ts//1024//1024}MB)", end='', flush=True)
     try:
-        urllib.request.urlretrieve(url, dest, lambda b, bs, ts: None)
+        urllib.request.urlretrieve(url, dest, _progress)
         size = os.path.getsize(dest)
-        print(f"  ✓ 下载完成 ({size // 1024 // 1024}MB)" if size > 1024*1024 else f"  ✓ 下载完成 ({size // 1024}KB)")
+        print(f"\r  ✓ 下载完成 ({size // 1024 // 1024}MB)" if size > 1024*1024 else f"\r  ✓ 下载完成 ({size // 1024}KB)")
         return True
     except Exception as e:
-        print(f"  ✗ 下载失败: {e}")
+        print(f"\r  ✗ 下载失败: {e}")
         return False
 
 
