@@ -25,6 +25,7 @@ def load_config():
 
 def save_config(data):
     try:
+        os.makedirs(os.path.dirname(CFG_FILE), exist_ok=True)
         with open(CFG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
