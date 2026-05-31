@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MPlugins for mPython — 构建/打包脚本
+MPlugins for mPython — 构建/打包脚本 (v1.60)
 
 从 version.txt 读取版本号，更新所有文件，打包至 history/。
 用法:  python build.py          # 仅更新版本号
