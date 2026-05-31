@@ -105,31 +105,39 @@ def detect_install_state(build_dir):
 
 def patch_index_html(index_path, is_update):
     """在 index.html 的 </body> 前插入 mplugin-core.js，先备份（仅首次）"""
-    if is_update:
-        print("  [跳过] 更新模式，无需修改 index.html")
-        return True
-
     backup = index_path + ".backup"
-    if not os.path.isfile(backup):
-        shutil.copy2(index_path, backup)
-        print(f"  [备份] {index_path} → {backup}")
+    has_backup = os.path.isfile(backup)
 
     with open(index_path, "r", encoding="utf-8", errors="replace") as f:
-        html = f.read()
+        current_html = f.read()
 
-    if SCRIPT_NAME in html:
-        print(f"  [跳过] {SCRIPT_NAME} 引用已存在")
+    # 脚本引用已存在 → 无事可做
+    if SCRIPT_NAME in current_html:
+        if is_update:
+            print(f"  [跳过] {SCRIPT_NAME} 引用已存在")
         return True
 
-    tag = f'<script src="./{SCRIPT_NAME}"></script>'
-    if '</body>' in html:
-        html = html.replace('</body>', tag + '\n</body>')
+    # 脚本引用不存在 → 需要修补
+    if is_update:
+        # 更新模式：索引被 mPython 更新覆盖了，重新修补（不重新备份）
+        print(f"  [检测] index.html 缺少 {SCRIPT_NAME} 引用，重新修补")
     else:
-        html += '\n' + tag
+        # 首次安装：先备份
+        if not has_backup:
+            shutil.copy2(index_path, backup)
+            print(f"  [备份] {index_path} → {backup}")
+
+    tag = f'<script src="./{SCRIPT_NAME}"></script>'
+    if '</body>' in current_html:
+        new_html = current_html.replace('</body>', tag + '\n</body>')
+    else:
+        new_html = current_html + '\n' + tag
 
     with open(index_path, "w", encoding="utf-8") as f:
-        f.write(html)
-    print(f"  [修改] index.html → 已插入 {SCRIPT_NAME}")
+        f.write(new_html)
+
+    action = "重新" if is_update else ""
+    print(f"  [修改] index.html → 已{action}插入 {SCRIPT_NAME}")
     return True
 
 
@@ -198,6 +206,8 @@ def _download(url, dest):
 
 
 def _extract_installer(exe_path, out_dir):
+    """从 NSIS 安装包中提取 exe/dll 文件"""
+    # 1) 7-Zip（最快）
     for prog in [
         r"C:\Program Files\7-Zip\7z.exe",
         r"C:\Program Files (x86)\7-Zip\7z.exe",
@@ -208,13 +218,51 @@ def _extract_installer(exe_path, out_dir):
             r = subprocess.run([prog, "x", exe_path, f"-o{out_dir}", "-y"], capture_output=True, timeout=30)
             if r.returncode == 0:
                 return True
-    print("  使用 PowerShell 解压...")
-    ps_cmd = f'$s = New-Object -ComObject Shell.Application; $z = $s.Namespace("{exe_path}"); $t = $s.Namespace("{out_dir}"); $t.CopyHere($z.Items(), 0x14)'
+
+    # 2) NSIS 静默安装（最可靠——NSIS 安装器都支持 /S /D=）
+    print("  使用静默安装提取...")
+    install_dir = os.path.join(os.path.dirname(out_dir), "_mos_install_dir")
+    if os.path.isdir(install_dir):
+        shutil.rmtree(install_dir, ignore_errors=True)
+    os.makedirs(install_dir, exist_ok=True)
     try:
-        subprocess.run(["powershell", "-Command", ps_cmd], timeout=60)
-        return len(os.listdir(out_dir)) > 5
-    except:
-        return False
+        subprocess.run([exe_path, "/S", f"/D={install_dir}"], timeout=120, capture_output=True)
+        # 等待安装完成（NSIS 异步返回，等一会）
+        import time
+        time.sleep(3)
+        copied = 0
+        for root, dirs, files in os.walk(install_dir):
+            for f in files:
+                if f.endswith(".exe") or f.endswith(".dll"):
+                    shutil.copy2(os.path.join(root, f), os.path.join(out_dir, f))
+                    copied += 1
+        shutil.rmtree(install_dir, ignore_errors=True)
+        if copied >= 5:
+            print(f"  ✓ 静默安装提取成功 ({copied} 文件)")
+            return True
+        print(f"  静默安装提取不完整 ({copied} 文件)，尝试备用方案")
+    except Exception as e:
+        print(f"  静默安装失败: {e}")
+
+    # 3) PowerShell COM（备用）
+    print("  使用 PowerShell 解压...")
+    ps_cmd = (
+        f'$s = New-Object -ComObject Shell.Application; '
+        f'$z = $s.Namespace("{exe_path}"); '
+        f'if (-not $z) {{ exit 1 }}; '
+        f'$t = $s.Namespace("{out_dir}"); '
+        f'$t.CopyHere($z.Items(), 0x14); '
+        f'Start-Sleep 3'
+    )
+    try:
+        subprocess.run(["powershell", "-Command", ps_cmd], timeout=120)
+        count = len([n for n in os.listdir(out_dir) if n.endswith(".exe") or n.endswith(".dll")])
+        if count >= 5:
+            return True
+        print(f"  解压结果: {count} 文件")
+    except Exception as e:
+        print(f"  解压异常: {e}")
+    return False
 
 
 def install_mosquitto():
