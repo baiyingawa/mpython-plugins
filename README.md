@@ -34,22 +34,17 @@
 
 ### 基础插件
 ```bash
-# 1. 安装插件框架
-python install.py
-
-# 2. 启动 mPython，顶栏出现 MPlugins 插件栏
-```
-
-### MQTT / IoT 功能（可选）
-```bash
-# 在安装插件后，额外执行：
+# 一键安装全部功能（插件框架 + MQTT 环境）
 python install_mqtt.py
-
-# 自动完成：
-#   · 下载 Mosquitto MQTT Broker
-#   · 创建 Python 虚拟环境
-#   · 安装后端依赖（FastAPI + aiomqtt）
+# 或仅安装插件框架：
+python install.py
 ```
+
+安装 `install_mqtt.py` 自动完成：
+- 下载 Mosquitto MQTT Broker
+- 创建 Python 虚拟环境
+- 安装后端依赖（FastAPI + aiomqtt）
+- 安装插件框架到 mPython
 
 ## MQTT 账号
 
