@@ -111,7 +111,8 @@
       if (gel('mplugin-bar')) { refreshEls(); return gel('mplugin-bar'); }
       var bar = document.createElement('div');
       bar.id = 'mplugin-bar';
-      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;background:linear-gradient(90deg,#1a1a2e,#16213e);color:#e0e0e0;font-size:12px;font-family:Segoe UI,sans-serif;display:flex;align-items:center;padding:0 12px;z-index:99999;border-bottom:1px solid #0f3460;box-shadow:0 2px 4px rgba(0,0,0,0.3);';
+      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;background:linear-gradient(90deg,#1a1a2e,#16213e);color:#e0e0e0;font-size:12px;font-family:Segoe UI,sans-serif;align-items:center;padding:0 12px;z-index:99999;border-bottom:1px solid #0f3460;box-shadow:0 2px 4px rgba(0,0,0,0.3);white-space:nowrap;';
+      bar.style.display = 'flex';  // 单独设置，避免 cssText 吞display
       bar.innerHTML =
         '<span style="color:#e94560;font-weight:bold;font-size:13px;margin-right:2px;">MPlugins</span><span style="color:#666;font-size:9px;margin-right:10px;">by uu</span>' +
         '<span id="mplugin-time" style="margin-right:16px;"></span>' +
@@ -431,7 +432,7 @@
           // 开启：恢复顶栏 + margin
           console.log('[MPlugins DIAG] 开启, bar=' + !!document.getElementById('mplugin-bar'));
           var bar = document.getElementById('mplugin-bar');
-          if (bar) bar.style.display = '';
+          if (bar) bar.style.display = 'flex';
           // 恢复 body margin CSS
           var spacer = document.getElementById('mplugin-bar-spacer');
           if (spacer) spacer.textContent = SPACER_CSS;
@@ -440,9 +441,10 @@
           api.setTime('已恢复', '#4caf50');
           api.log('模块已恢复');
         } else {
-          // 关闭：隐藏顶栏 + 移除 margin
+          // 关闭：隐藏顶栏 + 移除 margin + 隐藏通知
           console.log('[MPlugins DIAG] 关闭');
           if (backupTimer) { clearInterval(backupTimer); backupTimer = null; }
+          api.hideNotice();
           var bar = document.getElementById('mplugin-bar');
           if (bar) bar.style.display = 'none';
           var spacer = document.getElementById('mplugin-bar-spacer');
@@ -763,6 +765,8 @@
           if (bar) bar.style.display = 'none';
           var spacer = document.getElementById('mplugin-bar-spacer');
           if (spacer) spacer.textContent = '';
+          var notice = document.getElementById('mplugin-notice');
+          if (notice) notice.style.display = 'none';
         }
       } catch(e) {}
     }
