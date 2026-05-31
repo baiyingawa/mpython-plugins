@@ -773,6 +773,216 @@
   });
 
   // ================================================================
+  //  模块 - iot（IoT 服务器管理器）
+  // ================================================================
+
+  MP.register('iot', {
+    name: 'IoT 服务器',
+
+    init: function(api) {
+      var scriptDir = 'E:\\PROJECT\\MpythonPlugins\\mqtt';
+      var python = scriptDir + '\\venv\\Scripts\\python.exe';
+      var script = scriptDir + '\\server_manager.py';
+      var mqttEls = {};
+      var _iotStopTriggered = false;
+
+      // MQTT 积木模板
+      var MQTT_BLOCK_XML =
+        '<block type="mqtt_common_setup" id="mqtt_auto_{ID}" x="{X}" y="{Y}">' +
+          '<value name="client_id"><shadow type="text"><field name="TEXT">zkb</field></shadow></value>' +
+          '<value name="server"><shadow type="text"><field name="TEXT">{SERVER_IP}</field></shadow></value>' +
+          '<value name="port"><shadow type="math_number"><field name="NUM">1883</field></shadow></value>' +
+          '<value name="user"><shadow type="text"><field name="TEXT">zkb</field></shadow></value>' +
+          '<value name="password"><shadow type="text"><field name="TEXT">zkb1234</field></shadow></value>' +
+          '<value name="keepalive"><shadow type="math_number"><field name="NUM">30</field></shadow></value>' +
+        '</block>';
+
+      function injectMqttBlock(localIp) {
+        try {
+          // 1. 获取 workspace 和当前 XML
+          var ws = api.getWorkspace();
+          if (!ws) { api.warn('inject: 无 workspace'); return; }
+          var currentXml = api.getXML(ws);
+          if (!currentXml || currentXml.length < 20) { api.warn('inject: XML 过短'); return; }
+
+          // 2. 解析 XML，查找已有 MQTT 积木
+          var parser = new DOMParser();
+          var xmlDoc = parser.parseFromString(currentXml, 'text/xml');
+          var existingBlocks = xmlDoc.querySelectorAll('block[type="mqtt_common_setup"]');
+          var needUpdate = false;
+          var needAdd = false;
+
+          if (existingBlocks.length > 0) {
+            // 已有 MQTT 积木 → 检查 IP
+            api.log('注入: 找到已有 MQTT 积木');
+            for (var i = 0; i < existingBlocks.length; i++) {
+              var blk = existingBlocks[i];
+              // 查找 server → shadow → field TEXT
+              var serverVal = blk.querySelector('value[name="server"]');
+              if (serverVal) {
+                var shadow = serverVal.querySelector('shadow[type="text"], block[type="text"]');
+                if (shadow) {
+                  var field = shadow.querySelector('field[name="TEXT"]');
+                  if (field && field.textContent !== localIp) {
+                    field.textContent = localIp;
+                    needUpdate = true;
+                    api.log('注入: 更新 IP ' + localIp);
+                  }
+                }
+              }
+            }
+          } else {
+            // 没有 MQTT 积木 → 新增
+            needAdd = true;
+          }
+
+          if (!needUpdate && !needAdd) {
+            api.log('注入: IP 已正确，无需修改');
+            return;
+          }
+
+          // 3. 序列化修改后的 XML
+          var mergedXml = '<!--mPythonType:0-->\n' + new XMLSerializer().serializeToString(xmlDoc.documentElement);
+
+          if (needAdd) {
+            // 4a. 新增：计算中心位置
+            var topBlocks = [];
+            try { topBlocks = ws.getTopBlocks(true) || []; } catch(e) {}
+            var minX = 0, minY = 0, maxX = 0, maxY = 0;
+            if (topBlocks.length > 0) {
+              for (var i = 0; i < topBlocks.length; i++) {
+                var b = topBlocks[i];
+                try {
+                  var xy = b.getRelativeToSurfaceXY ? b.getRelativeToSurfaceXY() : null;
+                  if (xy) {
+                    var bw = b.getHeightWidth ? (b.getHeightWidth().width || 200) : 200;
+                    if (i === 0) { minX = xy.x; maxX = xy.x + bw; minY = xy.y; maxY = xy.y + 80; }
+                    else { minX = Math.min(minX, xy.x); maxX = Math.max(maxX, xy.x + bw); minY = Math.min(minY, xy.y); maxY = Math.max(maxY, xy.y + 80); }
+                  }
+                } catch(e) {}
+              }
+            }
+            var centerX = Math.round((minX + maxX) / 2 - 130);
+            var centerY = minY - 180;
+
+            // 5a. 生成积木 XML 插入
+            var blockXml = MQTT_BLOCK_XML
+              .replace('{SERVER_IP}', localIp || '127.0.0.1')
+              .replace('{ID}', Date.now().toString(36))
+              .replace('{X}', centerX)
+              .replace('{Y}', centerY);
+            var insertPos = mergedXml.lastIndexOf('</xml>');
+            if (insertPos < 0) { api.warn('inject: 无法找到 </xml>'); return; }
+            mergedXml = mergedXml.substring(0, insertPos) + '  ' + blockXml + '\n' + mergedXml.substring(insertPos);
+            api.log('注入: 新增 MQTT 积木');
+          } else {
+            api.log('注入: 已更新 IP');
+          }
+
+          // 6. 读取 autosave 路径
+          var autoCache = null;
+          try { var d = localStorage.getItem('mplugin_autosave_mxml'); autoCache = d ? JSON.parse(d) : null; } catch(e) {}
+          var savePath = (autoCache && autoCache.absolutePath) || '';
+          if (!savePath) { api.warn('注入: 无保存路径'); return; }
+
+          // 7. 保存
+          api.saveFile(savePath, mergedXml, savePath);
+          api.log('注入: 已保存 ' + savePath);
+
+          // 8. 打开
+          if (window.mqttHelper && typeof window.mqttHelper.openFile === 'function') {
+            window.mqttHelper.openFile(savePath);
+            api.log('注入: 已打开');
+          }
+
+          api.log('注入完成');
+        } catch(e) { api.err('注入失败:', e.message); }
+      }
+
+      function startAll() {
+        _iotStopTriggered = false;
+        api.log('启动中...');
+        api.setTime('MQTT启动...', '#ff9800');
+        try {
+          window.mqttHelper.exec('"' + python + '" "' + script + '" start').then(function(out) {
+            try { var info = JSON.parse(out.trim().split('\n').pop()); } catch(e) { api.err('解析输出失败:', e.message); return; }
+            if (info.status === 'starting' || info.backend_url) {
+              var url = info.backend_url || 'http://127.0.0.1:8000';
+              var mqttIp = info.mqtt_host || '127.0.0.1';
+              api.setTime('MQTT ' + mqttIp + ':1883', '#4caf50');
+              api.showNotice(mqttIp + ':1883 | 后端:' + url, '#4caf50');
+              api.log('IoT 服务已启动 (' + mqttIp + ':1883)');
+              // 自动注入 MQTT 连接积木（需先设置自动保存路径）
+              var autoCache = null;
+              try { var d = localStorage.getItem('mplugin_autosave_mxml'); autoCache = d ? JSON.parse(d) : null; } catch(e) {}
+              if (autoCache && autoCache.absolutePath) {
+                injectMqttBlock(mqttIp);
+              } else {
+                window.alert('请先在自动保存中设置保存路径！\n点击顶栏 [浏览] 按钮选择要保存的 .mxml 文件。');
+                api.log('注入跳过: 未设置保存路径');
+                _iotStopTriggered = true;
+                var modDef = MP.get('iot');
+                if (modDef) modDef.enabled = false;
+                stopAll();
+              }
+            }
+          }).catch(function(err) {
+            api.err('启动失败:', err);
+            api.setTime('MQTT失败', '#e94560');
+          }).then(function() {
+            // 完成：解除忙碌、刷新面板（stopAll 已触发时跳过）
+            if (!_iotStopTriggered) {
+              var m = MP.get('iot'); if (m) m.busy = false;
+              if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+            }
+          });
+        } catch(e) { api.err('mqttHelper不可用:', e.message);
+          if (!_iotStopTriggered) {
+            var m = MP.get('iot'); if (m) m.busy = false;
+            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+          }
+        }
+      }
+
+      function stopAll() {
+        api.log('停止中...');
+        try {
+          window.mqttHelper.exec('"' + python + '" "' + script + '" stop').then(function(out) {
+            api.setTime('');
+            api.hideNotice();
+            api.log('IoT 服务已停止');
+          }).catch(function(err) {
+            api.err('停止失败:', err);
+          }).then(function() {
+            var m = MP.get('iot'); if (m) m.busy = false;
+            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+          });
+        } catch(e) { api.err('mqttHelper不可用:', e.message);
+          var m = MP.get('iot'); if (m) m.busy = false;
+          if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+        }
+      }
+
+      function toggleIot() {
+        var modDef = MP.get('iot');
+        if (!modDef || modDef.busy) return;
+        modDef.busy = true;
+        modDef.enabled = !modDef.enabled;
+        if (modDef.enabled) { startAll(); }
+        else { stopAll(); }
+      }
+
+      // 暴露 toggle 给面板
+      var modDef = MP.get('iot');
+      if (modDef) { modDef.toggle = toggleIot; modDef.enabled = false; }
+    },
+
+    rescue: function() {
+      // bar 重建后恢复状态（仅显示已启动过，不重启）
+    }
+  });
+
+  // ================================================================
   //  第三部分：启动
   // ================================================================
 
@@ -814,6 +1024,8 @@
     console.log('body margin-top:', getComputedStyle(document.body).marginTop);
     console.log('body position:', getComputedStyle(document.body).position);
     console.log('body overflow:', getComputedStyle(document.body).overflow);
+    // mqttHelper
+    console.log('mqttHelper:', typeof window.mqttHelper);
     // 列出 body 直接子元素
     var children = document.body.children;
     console.log('body 子元素数:', children.length);
@@ -839,15 +1051,18 @@
       var started = _moduleStates[n] && _moduleStates[n].started;
       var moduleDef = _modules[n];
       var isRunning = started && (moduleDef.enabled !== false);
-      var statusText = isRunning ? '运行中' : (started ? '已暂停' : '未启动');
-      var statusColor = isRunning ? '#4caf50' : '#888';
-      var toggleBg = isRunning ? '#4caf50' : '#555';
+      var isBusy = moduleDef.busy === true;
+      var statusText = isBusy ? '操作中...' : (isRunning ? '运行中' : (started ? '已暂停' : '未启动'));
+      var statusColor = isBusy ? '#888' : (isRunning ? '#4caf50' : '#888');
+      var toggleBg = isBusy ? '#444' : (isRunning ? '#4caf50' : '#555');
       var toggleDot = isRunning ? 'right:3px' : 'left:3px';
+      var cursorStyle = isBusy ? 'not-allowed' : 'pointer';
+      // 忙碌时 onclick 仍在，但 MP.toggleModule 会通过 modDef.busy 拦截
       rows += '<tr>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + (moduleDef.name || n) + '</td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;"><span id="mplugin-panel-status-' + n + '" style="color:' + statusColor + ';font-size:12px;">' + statusText + '</span></td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;text-align:right;">' +
-          '<div id="mplugin-panel-toggle-' + n + '" onclick="MP.toggleModule(\'' + n + '\')" style="display:inline-block;width:36px;height:20px;background:' + toggleBg + ';border-radius:10px;cursor:pointer;transition:background 0.2s;position:relative;vertical-align:middle;">' +
+          '<div id="mplugin-panel-toggle-' + n + '" onclick="MP.toggleModule(\'' + n + '\')" style="display:inline-block;width:36px;height:20px;background:' + toggleBg + ';border-radius:10px;cursor:' + cursorStyle + ';transition:background 0.2s;position:relative;vertical-align:middle;">' +
             '<div style="position:absolute;top:2px;width:16px;height:16px;background:#fff;border-radius:50%;' + toggleDot + ';transition:left 0.2s,right 0.2s;"></div>' +
           '</div>' +
         '</td></tr>';
@@ -871,6 +1086,7 @@
     console.log('[MPlugins DIAG] toggleModule 被调用, name=' + name);
     var modDef = _modules[name];
     if (!modDef) { console.log('[MPlugins DIAG] modDef 不存在!'); return; }
+    if (modDef.busy) { console.log('[MPlugins DIAG] 忙碌中, 跳过'); return; }
     console.log('[MPlugins DIAG] toggle前 enabled=' + modDef.enabled);
     // 调 toggle 函数，内部自己管理 enabled
     if (typeof modDef.toggle === 'function') {
@@ -880,14 +1096,18 @@
     // 重建面板 HTML（最可靠）
     if (_panelEl) {
       _panelEl.innerHTML = buildPanelHTML();
-      // 重新绑定关闭按钮
-      var cb = document.getElementById('mplugin-panel-close');
-      if (cb) cb.onclick = function() { _panelState.expanded = false; _panelEl.style.display = 'none'; };
-      // 绑定诊断按钮
-      var db = document.getElementById('mplugin-diag-btn');
-      if (db) db.onclick = function() { window.__mplugin_diag(); };
+      bindPanelHandlers();
     }
   };
+
+  /** 绑定面板关闭 + 诊断按钮事件 */
+  function bindPanelHandlers() {
+    if (!_panelEl) return;
+    var cb = document.getElementById('mplugin-panel-close');
+    if (cb) cb.onclick = function() { _panelState.expanded = false; _panelEl.style.display = 'none'; };
+    var db = document.getElementById('mplugin-diag-btn');
+    if (db) db.onclick = function() { window.__mplugin_diag(); };
+  }
 
   /** 更新面板中某模块行的开关与状态文本 —— 已废弃，改用面板重建 */
   function updatePanelRow(name, modDef) {

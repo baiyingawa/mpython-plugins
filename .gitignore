@@ -5,3 +5,9 @@ Thumbs.db
 __pycache__/
 *.pyc
 history/
+
+# MQTT - Mosquitto 二进制文件（安装时自动下载）
+mqtt/mosquitto/bin/
+mqtt/mosquitto/*.exe
+mqtt/*.log
+mqtt/.mqtt_pids.json

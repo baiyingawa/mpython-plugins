@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MQTT Dashboard</title>
+<style>
+:root{--bg:#060e1a;--surface:#0b1728;--card:rgba(12,24,40,.88);--border:rgba(255,255,255,.06);--text:#c8d0dc;--text2:#6a7a8a;--accent:#42a5f5;--green:#66bb6a;--amber:#ffa726;--red:#ef5350}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:var(--text);background:var(--bg);overflow-x:hidden}
+body{display:flex;flex-direction:column;min-height:100vh;background-image:radial-gradient(ellipse 900px 600px at 0% 0%,rgba(33,150,243,.06) 0%,transparent 60%),radial-gradient(ellipse 700px 500px at 100% 100%,rgba(0,200,150,.04) 0%,transparent 60%)}
+
+/* ===== TOP BAR ===== */
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:rgba(8,18,32,.9);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;letter-spacing:.3px}
+.logo svg{flex-shrink:0}
+.logo .sys-name{color:#e0e0e0}
+.logo .sys-sub{font-size:11px;color:var(--text2);font-weight:400;margin-left:6px}
+.conn-badge{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 14px;border-radius:20px;background:rgba(255,255,255,.04);color:var(--text2);transition:all .4s}
+.conn-badge.on{background:rgba(76,175,80,.12);color:var(--green)}
+.conn-badge .pulse{width:7px;height:7px;border-radius:50%;background:#444;transition:background .4s}
+.conn-badge.on .pulse{background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(76,175,80,.4)}50%{box-shadow:0 0 0 5px rgba(76,175,80,0)}}
+.top-actions{display:flex;gap:6px}
+
+/* ===== BUTTONS ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;color:#fff;white-space:nowrap}
+.btn:active{transform:scale(.96)}
+.btn-ghost{background:rgba(255,255,255,.05);color:var(--text2);border:1px solid rgba(255,255,255,.06)}
+.btn-ghost:hover{background:rgba(255,255,255,.09);color:var(--text)}
+.btn-accent{background:linear-gradient(135deg,#1565c0,#1e88e5);box-shadow:0 2px 12px rgba(33,150,243,.25)}
+.btn-accent:hover{box-shadow:0 4px 20px rgba(33,150,243,.35)}
+.btn-green{background:linear-gradient(135deg,#2e7d32,#388e3c);box-shadow:0 2px 10px rgba(46,125,50,.25)}
+.btn-green:hover{box-shadow:0 4px 18px rgba(46,125,50,.35)}
+.btn-sm{padding:5px 10px;font-size:11px}
+
+/* ===== TOAST ===== */
+#toast-area{position:fixed;top:66px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:6px}
+.toast{padding:10px 18px;border-radius:8px;font-size:13px;color:#fff;opacity:0;transform:translateX(30px);animation:ti .3s ease forwards;max-width:320px;box-shadow:0 4px 24px rgba(0,0,0,.5)}
+.toast.success{background:rgba(46,125,50,.92)}.toast.error{background:rgba(198,40,40,.92)}
+.toast.info{background:rgba(21,101,192,.92)}.toast.warn{background:rgba(230,81,0,.92)}
+.toast.out{animation:to .3s ease forwards}
+@keyframes ti{to{opacity:1;transform:translateX(0)}}
+@keyframes to{to{opacity:0;transform:translateX(30px)}}
+
+/* ===== MAIN GRID ===== */
+.main-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;padding:20px;max-width:1600px;width:100%;margin:0 auto}
+.main-grid.single{grid-template-columns:1fr;max-width:800px}
+
+/* ===== CARD ===== */
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;transition:border-color .3s}
+.card:hover{border-color:rgba(255,255,255,.1)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-header h3{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+.card-header h3 .badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.04);font-weight:400;letter-spacing:0;text-transform:none}
+.badge-in{background:rgba(76,175,80,.12)!important;color:var(--green)!important}
+.badge-out{background:rgba(33,150,243,.12)!important;color:var(--accent)!important}
+
+/* ===== CHART ===== */
+.chart-wrap{width:100%;height:200px;position:relative}
+.chart-wrap canvas{width:100%;height:100%;display:block}
+
+/* ===== GAUGE ===== */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px 0;min-height:160px}
+.gauge-val{font-size:64px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;transition:color .3s}
+.gauge-unit{font-size:24px;font-weight:400;margin-left:2px;color:var(--text2)}
+.gauge-label{font-size:11px;color:var(--text2);margin-top:8px;letter-spacing:1px}
+
+/* ===== STATE ===== */
+.state-wrap{display:flex;align-items:center;justify-content:center;padding:24px 0;gap:16px}
+.state-indicator{display:flex;align-items:center;gap:12px;padding:16px 28px;border-radius:12px;border:2px solid #333;transition:all .4s}
+.state-indicator.on{border-color:var(--green);background:rgba(76,175,80,.06)}
+.state-indicator.off{border-color:#555;background:rgba(255,255,255,.02)}
+.state-icon{font-size:36px;transition:all .3s}
+.state-text{font-size:16px;font-weight:700;letter-spacing:1px;transition:color .3s}
+.state-indicator.on .state-text{color:var(--green)}
+.state-indicator.off .state-text{color:var(--text2)}
+.state-meta{margin-top:8px;font-size:11px;color:var(--text2);text-align:center}
+
+/* ===== SLIDER ===== */
+.slider-wrap{padding:12px 0}
+.slider-display{font-size:48px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.slider-label{font-size:11px;color:var(--text2);text-align:center;margin:4px 0 12px;letter-spacing:1px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:4px;outline:none;cursor:pointer;background:#1a2a3a}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#bdbdbd,#fff);cursor:pointer;box-shadow:0 0 10px rgba(255,255,255,.2);margin-top:-8px}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#bdbdbd,#fff);cursor:pointer;border:none}
+.slider-ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--text2);margin-top:4px;padding:0 2px}
+.slider-presets{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.preset-btn{flex:1;min-width:50px;padding:8px 0;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-align:center}
+.preset-btn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15);color:var(--text)}
+
+/* ===== TEXT LOG ===== */
+.text-log{max-height:200px;overflow-y:auto;font-size:12px;font-family:'Cascadia Code','Fira Code',monospace}
+.text-log::-webkit-scrollbar{width:3px}
+.text-log::-webkit-scrollbar-thumb{background:#1a2a3a;border-radius:2px}
+.text-entry{padding:5px 8px;border-radius:4px;transition:background .15s}
+.text-entry:nth-child(odd){background:rgba(255,255,255,.015)}
+.text-entry:hover{background:rgba(255,255,255,.03)}
+.text-entry .t-time{color:var(--text2);font-size:10px;margin-right:8px}
+.text-entry .t-body{color:var(--text);word-break:break-all}
+
+/* ===== BUTTON LIST ===== */
+.btn-list{display:flex;flex-direction:column;gap:8px}
+.btn-list .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+.btn-cmd{flex:1;padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text);font-size:13px;cursor:pointer;transition:all .2s;text-align:center;min-width:80px}
+.btn-cmd:hover{background:rgba(33,150,243,.08);border-color:rgba(33,150,243,.3);color:#fff}
+.btn-cmd:active{transform:scale(.97)}
+.btn-cmd .cmd-label{display:block;font-weight:600}
+.btn-cmd .cmd-detail{display:block;font-size:10px;color:var(--text2);margin-top:2px}
+
+/* ===== EMPTY STATE ===== */
+.empty-state{grid-column:1/-1;text-align:center;padding:80px 20px;color:var(--text2)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:16px;opacity:.4}
+.empty-state h3{font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px}
+.empty-state p{font-size:13px;max-width:400px;margin:0 auto 24px;line-height:1.6}
+.empty-state .btn{margin:0 auto}
+
+/* ===== MODAL ===== */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:640px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 60px rgba(0,0,0,.6)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)}
+.modal-header h2{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
+.modal-close{background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 4px;transition:color .2s}
+.modal-close:hover{color:var(--text)}
+.modal-body{flex:1;overflow-y:auto;padding:18px 24px}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)}
+
+/* ===== TOPIC EDITOR ===== */
+.topic-list{display:flex;flex-direction:column;gap:10px}
+.topic-item{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color .2s}
+.topic-item:hover{border-color:rgba(255,255,255,.1)}
+.topic-item-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.topic-item-header .ti-name{font-weight:600;font-size:14px}
+.topic-item-header .ti-actions{display:flex;gap:4px}
+.topic-item-header .ti-actions button{background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;transition:all .2s}
+.topic-item-header .ti-actions button:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.topic-item-header .ti-actions .del:hover{color:var(--red);background:rgba(239,83,80,.1)}
+.topic-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.topic-fields .field{display:flex;flex-direction:column;gap:4px}
+.topic-fields label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.topic-fields input,.topic-fields select{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;transition:border-color .2s}
+.topic-fields input:focus,.topic-fields select:focus{border-color:rgba(66,165,245,.4)}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:700px){
+  .main-grid{grid-template-columns:1fr;padding:12px;gap:12px}
+  .topic-fields{grid-template-columns:1fr}
+  .top-bar{padding:0 12px}
+  .modal{width:100vw;max-height:100vh;border-radius:0}
+}
+</style>
+</head>
+<body>
+
+<div id="toast-area"></div>
+
+<header class="top-bar">
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 7.76a6 6 0 000 8.49"/><path d="M4.93 4.93a10 10 0 000 14.14"/></svg>
+    <span class="sys-name">MQTT Dashboard</span>
+    <span class="sys-sub">v1.0</span>
+  </div>
+  <div class="conn-badge" id="conn-badge">
+    <span class="pulse"></span>
+    <span id="conn-text">连接中...</span>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-ghost" id="btn-settings">⚙ 配置</button>
+  </div>
+</header>
+
+<main class="main-grid" id="main-grid">
+  <div class="empty-state" id="empty-state">
+    <div class="empty-icon">📡</div>
+    <h3>尚未配置任何主题</h3>
+    <p>点击右上角「⚙ 配置」添加 MQTT 主题，选择数据显示方式和输入/输出方向。</p>
+    <button class="btn btn-accent" id="btn-config-now">+ 添加主题</button>
+  </div>
+</main>
+
+<!-- ===== SETTINGS MODAL ===== -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚙ 主题配置</h2>
+      <button class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">添加要监控或控制的 MQTT 主题。每个主题可独立设置显示方式。</p>
+      <div class="topic-list" id="topic-list"></div>
+      <button class="btn btn-ghost" id="btn-add-topic" style="margin-top:12px;width:100%;padding:10px">+ 添加主题</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="modal-cancel">取消</button>
+      <button class="btn btn-accent" id="modal-save">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + (location.host || '127.0.0.1:8000') + '/api/ws';
+var STORAGE_KEY = 'mqtt_dashboard_config';
+
+var ws = null, reconnectTimer = null, connected = false;
+var startTime = Date.now(), totalMessages = 0;
+var chartInstances = {};
+
+// ===== CONFIG =====
+var config = { topics: [] };
+
+function loadConfig(){
+  try { var d = localStorage.getItem(STORAGE_KEY); if (d) config = JSON.parse(d); } catch(e) {}
+  if (!config.topics || !Array.isArray(config.topics)) config.topics = [];
+}
+
+function saveConfig(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch(e) {}
+}
+
+// ===== TOAST =====
+function toast(msg, type){
+  var area = document.getElementById('toast-area');
+  var el = document.createElement('div');
+  el.className = 'toast ' + (type||'info');
+  el.textContent = msg;
+  area.appendChild(el);
+  setTimeout(function(){ el.classList.add('out'); }, 3000);
+  setTimeout(function(){ el.remove(); }, 3400);
+}
+
+// ===== STATUS =====
+function updateStatus(){
+  var badge = document.getElementById('conn-badge');
+  var text = document.getElementById('conn-text');
+  if (connected){
+    badge.className = 'conn-badge on';
+    text.textContent = '已连接';
+  } else {
+    badge.className = 'conn-badge';
+    text.textContent = '未连接';
+  }
+}
+setInterval(updateStatus, 1000);
+
+// ===== RENDER =====
+var grid = document.getElementById('main-grid');
+var emptyState = document.getElementById('empty-state');
+
+function getCellColor(t){
+  var m = {chart:'#ffc107',gauge:'var(--accent)',state:void 0,text:void 0,button:void 0,slider:void 0};
+  return m[t] || null;
+}
+
+function renderDashboard(){
+  var topics = config.topics || [];
+  grid.innerHTML = '';
+  if (topics.length === 0){
+    grid.appendChild(emptyState);
+    emptyState.style.display = '';
+    return;
+  }
+  emptyState.style.display = 'none';
+  topics.forEach(function(t, idx){
+    if (!t.path) return;
+    var card = document.createElement('section');
+    card.className = 'card';
+    card.id = 'card-' + idx;
+    var dirBadge = t.direction === 'out' ? 'badge-out' : 'badge-in';
+    var dirText = t.direction === 'out' ? '输出' : '输入';
+    var typeNames = {chart:'折线图',gauge:'数值',state:'状态',text:'文本',button:'按钮',slider:'滑块'};
+    card.innerHTML =
+      '<div class="card-header"><h3>' + (t.icon||'📡') + ' ' + (t.name||t.path) +
+      ' <span class="badge ' + dirBadge + '">' + dirText + '</span>' +
+      ' <span class="badge">' + (typeNames[t.type]||t.type) + '</span>' +
+      '</h3></div><div class="card-body" id="cbody-' + idx + '"></div>';
+    grid.appendChild(card);
+    var body = document.getElementById('cbody-' + idx);
+    renderWidget(body, t, idx);
+  });
+  if (topics.length === 1) grid.className = 'main-grid single';
+  else grid.className = 'main-grid';
+}
+
+function renderWidget(container, t, idx){
+  if (t.type === 'chart'){
+    var wrap = document.createElement('div');
+    wrap.className = 'chart-wrap';
+    wrap.innerHTML = '<canvas id="chart-' + idx + '"></canvas>';
+    container.appendChild(wrap);
+    initChart(idx, t);
+  } else if (t.type === 'gauge'){
+    container.innerHTML = '<div class="gauge-wrap"><div class="gauge-val" id="gauge-' + idx + '">--<span class="gauge-unit">' + (t.unit||'') + '</span></div><div class="gauge-label">' + (t.name||t.path) + '</div></div>';
+    dataStore[idx] = dataStore[idx] || {val: null};
+  } else if (t.type === 'state'){
+    container.innerHTML =
+      '<div class="state-wrap"><div class="state-indicator off" id="state-' + idx + '">' +
+      '<span class="state-icon" id="sticon-' + idx + '">⬤</span>' +
+      '<span class="state-text" id="sttext-' + idx + '">等待数据</span></div></div>' +
+      '<div class="state-meta" id="stmeta-' + idx + '">等待信号...</div>';
+    dataStore[idx] = dataStore[idx] || {state: false};
+  } else if (t.type === 'text'){
+    container.innerHTML = '<div class="text-log" id="tlog-' + idx + '"><div class="text-entry" style="color:var(--text2)"><span class="t-body">等待数据...</span></div></div>';
+    dataStore[idx] = dataStore[idx] || {entries: []};
+  } else if (t.type === 'button'){
+    var btns = (t.buttons && t.buttons.length) ? t.buttons : [{label:'发送',payload:'1'}];
+    var html = '<div class="btn-list">';
+    for (var r = 0; r < Math.ceil(btns.length/3); r++){
+      html += '<div class="btn-row">';
+      for (var c = 0; c < 3; c++){
+        var bi = r*3 + c;
+        if (bi >= btns.length) break;
+        var b = btns[bi];
+        html += '<div class="btn-cmd" data-topic="' + escAttr(t.path) + '" data-payload="' + escAttr(b.payload) + '"><span class="cmd-label">' + escHtml(b.label) + '</span><span class="cmd-detail">' + escHtml(b.payload) + '</span></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+    container.querySelectorAll('.btn-cmd').forEach(function(el){
+      el.addEventListener('click', function(){
+        var topic = this.getAttribute('data-topic');
+        var payload = this.getAttribute('data-payload');
+        sendMqtt(topic, payload);
+      });
+    });
+  } else if (t.type === 'slider'){
+    var min = t.min || 0, max = t.max || 255, step = t.step || 1, cur = t.default !== undefined ? t.default : Math.round((min+max)/2);
+    container.innerHTML =
+      '<div class="slider-wrap"><div class="slider-display" id="slval-' + idx + '">' + cur + '</div>' +
+      '<div class="slider-label">' + (t.name||t.path) + ' (' + min + ' – ' + max + ')</div>' +
+      '<input type="range" id="slider-' + idx + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + cur + '"/>' +
+      '<div class="slider-ticks"><span>' + min + '</span><span>' + Math.round((min+max)/2) + '</span><span>' + max + '</span></div></div>';
+    var sl = document.getElementById('slider-' + idx);
+    var sd = document.getElementById('slval-' + idx);
+    var throttle = null;
+    sl.addEventListener('input', function(){
+      sd.textContent = this.value;
+      clearTimeout(throttle);
+      throttle = setTimeout(function(){ sendMqtt(t.path, parseInt(sl.value, 10)); }, 100);
+    });
+    if (t.presets){
+      var presetsDiv = document.createElement('div');
+      presetsDiv.className = 'slider-presets';
+      (t.presets||[]).forEach(function(p){
+        var btn = document.createElement('div');
+        btn.className = 'preset-btn';
+        btn.textContent = p.label || String(p.val);
+        btn.addEventListener('click', function(){
+          sl.value = p.val; sd.textContent = p.val;
+          sendMqtt(t.path, parseInt(p.val, 10));
+        });
+        presetsDiv.appendChild(btn);
+      });
+      container.querySelector('.slider-wrap').appendChild(presetsDiv);
+    }
+    dataStore[idx] = dataStore[idx] || {};
+  }
+}
+
+// ===== CHART (Canvas) =====
+function initChart(idx, t){
+  chartInstances[idx] = {values:[], labels:[], max: t.maxPoints || 60, color: t.color || '#ffc107'};
+  setTimeout(function(){ resizeChart(idx); }, 50);
+}
+function resizeChart(idx){
+  var canvas = document.getElementById('chart-' + idx);
+  if (!canvas) return;
+  var wrap = canvas.parentElement;
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  drawChart(idx);
+}
+function drawChart(idx){
+  var canvas = document.getElementById('chart-' + idx);
+  if (!canvas) return;
+  var ci = chartInstances[idx]; if (!ci || ci.values.length === 0) return;
+  var ctx = canvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  ctx.scale(dpr, dpr);
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  var pad = {top:20,right:12,bottom:28,left:44};
+  var cw = w - pad.left - pad.right, ch = h - pad.top - pad.bottom;
+  var vals = ci.values, lbls = ci.labels, color = ci.color || '#ffc107';
+  if (vals.length < 2) return;
+  ctx.clearRect(0,0,w,h);
+  var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
+  if (minV === maxV){ minV -= 5; maxV += 5; }
+  var range = maxV - minV;
+  ctx.strokeStyle = 'rgba(255,255,255,.03)'; ctx.lineWidth = 1; ctx.font = '9px system-ui';
+  for (var i = 0; i <= 4; i++){
+    var yVal = minV + (range * i / 4);
+    var yPos = pad.top + ch - (ch * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(pad.left + cw, yPos); ctx.stroke();
+    ctx.fillStyle = '#445'; ctx.textAlign = 'right'; ctx.fillText(yVal.toFixed(range<20?1:0), pad.left - 6, yPos + 3);
+  }
+  ctx.textAlign = 'center'; ctx.fillStyle = '#445';
+  var step = Math.max(1, Math.floor(lbls.length / 5));
+  for (i = 0; i < lbls.length; i += step){
+    var xPos = pad.left + (i / Math.max(lbls.length - 1, 1)) * cw;
+    ctx.fillText(lbls[i], xPos, h - 6);
+  }
+  var pts = [];
+  for (i = 0; i < vals.length; i++){
+    pts.push({x: pad.left + (i / Math.max(vals.length - 1, 1)) * cw, y: pad.top + ch - ((vals[i] - minV) / range) * ch});
+  }
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (i = 1; i < pts.length; i++){
+    var cp1x = (pts[i-1].x + pts[i].x) / 2;
+    ctx.bezierCurveTo(cp1x, pts[i-1].y, cp1x, pts[i].y, pts[i].x, pts[i].y);
+  }
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.shadowColor = color + '44'; ctx.shadowBlur = 6; ctx.stroke();
+  ctx.shadowBlur = 0;
+  for (i = 0; i < pts.length; i++){
+    ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, 3, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill();
+  }
+  if (pts.length > 0){
+    var last = pts[pts.length-1];
+    ctx.beginPath(); ctx.arc(last.x, last.y, 4, 0, Math.PI*2); ctx.fillStyle = color + '44'; ctx.fill();
+    ctx.beginPath(); ctx.arc(last.x, last.y, 2, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+}
+function pushChartPoint(idx, value){
+  var ci = chartInstances[idx]; if (!ci) return;
+  var now = new Date();
+  var label = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+  ci.values.push(value); ci.labels.push(label);
+  if (ci.values.length > ci.max){ ci.values.shift(); ci.labels.shift(); }
+  drawChart(idx);
+}
+
+// ===== DATA STORE =====
+var dataStore = {};
+
+// ===== WS =====
+function connectWS(){
+  if (ws){ ws.onclose = null; ws.close(); }
+  try { ws = new WebSocket(WS_URL); } catch(e){ scheduleReconnect(); return; }
+  ws.onopen = function(){ connected = true; updateStatus(); toast('已连接到服务端', 'success'); };
+  ws.onclose = function(e){ connected = false; updateStatus(); if (e.code !== 1000) scheduleReconnect(); };
+  ws.onerror = function(){ connected = false; updateStatus(); };
+  ws.onmessage = function(e){
+    var frame;
+    try { frame = JSON.parse(e.data); } catch(err){ return; }
+    if (frame.event === 'history'){ (frame.data||[]).forEach(handleMsg); }
+    else if (frame.event === 'message'){ handleMsg(frame.data); }
+    else if (frame.event === 'notification'){ toast(frame.data.message, frame.data.level||'info'); }
+  };
+}
+function scheduleReconnect(){ clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connectWS, 3000); }
+
+function sendMqtt(topic, payload){
+  if (!ws || !connected){ toast('WebSocket 未连接', 'error'); return; }
+  ws.send(JSON.stringify({action:'publish', topic: topic, payload: payload}));
+  toast('📤 ' + topic + ': ' + (typeof payload==='object'?JSON.stringify(payload):String(payload)).substring(0,40), 'info');
+}
+
+function handleMsg(msg){
+  if (!msg) return;
+  var topic = msg.topic || '';
+  var payload = msg.payload;
+  totalMessages++;
+  // find matching cards
+  (config.topics||[]).forEach(function(t, idx){
+    if (topicMatches(t.path, topic) && t.direction !== 'out'){
+      if (t.type === 'chart'){
+        var num = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (!isNaN(num)) pushChartPoint(idx, num);
+      } else if (t.type === 'gauge'){
+        var num = typeof payload === 'number' ? payload : parseFloat(payload);
+        if (!isNaN(num)){
+          var el = document.getElementById('gauge-' + idx);
+          if (el) el.innerHTML = (t.precision !== undefined ? num.toFixed(t.precision) : num) + '<span class="gauge-unit">' + (t.unit||'') + '</span>';
+        }
+      } else if (t.type === 'state'){
+        var p = String(payload).toLowerCase().trim();
+        var on = (p === '1' || p === 'true' || p === 'on' || p === 'yes');
+        var off = (p === '0' || p === 'false' || p === 'off' || p === 'no');
+        if (on || off){
+          var ind = document.getElementById('state-' + idx);
+          var icon = document.getElementById('sticon-' + idx);
+          var text = document.getElementById('sttext-' + idx);
+          var meta = document.getElementById('stmeta-' + idx);
+          if (ind){ ind.className = 'state-indicator ' + (on?'on':'off'); }
+          if (icon) icon.textContent = on ? '●' : '○';
+          if (text) text.textContent = on ? (t.onText||'开启') : (t.offText||'关闭');
+          if (meta) meta.textContent = '最后更新: ' + new Date().toLocaleTimeString();
+        }
+      } else if (t.type === 'text'){
+        var log = document.getElementById('tlog-' + idx);
+        if (!log) return;
+        var row = document.createElement('div');
+        row.className = 'text-entry';
+        var pStr = typeof payload === 'object' ? JSON.stringify(payload) : String(payload);
+        row.innerHTML = '<span class="t-time">' + new Date().toLocaleTimeString() + '</span><span class="t-body">' + escHtml(pStr) + '</span>';
+        if (log.children.length === 1 && log.children[0].querySelector('.t-body') && log.children[0].querySelector('.t-body').textContent === '等待数据...') log.innerHTML = '';
+        log.insertBefore(row, log.firstChild);
+        var max = t.maxEntries || 100;
+        while (log.children.length > max) log.removeChild(log.lastChild);
+      }
+    }
+  });
+}
+
+function topicMatches(pattern, topic){
+  if (pattern === topic) return true;
+  if (pattern.endsWith('/#')) return topic.startsWith(pattern.slice(0,-2));
+  if (pattern.endsWith('/+')){ var base = pattern.slice(0,-2); var rest = topic.substring(base.length); return topic.startsWith(base) && !rest.includes('/'); }
+  return false;
+}
+
+function escHtml(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escAttr(s){ return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ===== SETTINGS MODAL =====
+var modal = document.getElementById('settings-modal');
+
+function openSettings(){
+  renderTopicEditor();
+  modal.classList.add('show');
+}
+function closeSettings(){ modal.classList.remove('show'); }
+
+function typeOptions(dir, selected){
+  var opts = dir === 'out'
+    ? [['button','🔘 按钮'],['slider','🎚️ 滑块']]
+    : [['chart','📈 折线图'],['gauge','🔢 数值'],['state','🟢 状态'],['text','📝 文本']];
+  return opts.map(function(o){ return '<option value="' + o[0] + '"' + (selected===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('');
+}
+
+function renderTopicEditor(){
+  var list = document.getElementById('topic-list');
+  list.innerHTML = '';
+  (config.topics||[]).forEach(function(t, idx){
+    var item = document.createElement('div');
+    item.className = 'topic-item';
+    item.innerHTML =
+      '<div class="topic-item-header"><span class="ti-name">' + (t.name||t.path||'新主题') + '</span><div class="ti-actions"><button class="dupe" title="复制">⧉</button><button class="del" title="删除">✕</button></div></div>' +
+      '<div class="topic-fields">' +
+        '<div class="field"><label>主题名称</label><input class="f-name" value="' + escAttr(t.name||'') + '" placeholder="显示名称"/></div>' +
+        '<div class="field"><label>主题路径</label><input class="f-path" value="' + escAttr(t.path||'') + '" placeholder="如 sensor/temp"/></div>' +
+        '<div class="field"><label>方向</label><select class="f-dir" data-idx="' + idx + '"><option value="in"' + (t.direction==='in'?' selected':'') + '>输入（接收）</option><option value="out"' + (t.direction==='out'?' selected':'') + '>输出（发送）</option></select></div>' +
+        '<div class="field"><label>显示方式</label><select class="f-type">' + typeOptions(t.direction||'in', t.type) + '</select></div>' +
+      '</div>';
+    // Delete
+    item.querySelector('.del').addEventListener('click', function(){ config.topics.splice(idx,1); renderTopicEditor(); });
+    // Duplicate
+    item.querySelector('.dupe').addEventListener('click', function(){
+      var copy = JSON.parse(JSON.stringify(t));
+      config.topics.splice(idx+1, 0, copy);
+      renderTopicEditor();
+    });
+    // 方向切换 → 联动筛选显示方式
+    item.querySelector('.f-dir').addEventListener('change', function(){
+      var dir = this.value;
+      var typeSel = item.querySelector('.f-type');
+      var currentType = typeSel.value;
+      var validTypes = dir === 'out' ? ['button','slider'] : ['chart','gauge','state','text'];
+      if (validTypes.indexOf(currentType) === -1){
+        typeSel.innerHTML = typeOptions(dir, validTypes[0]);
+      } else {
+        typeSel.innerHTML = typeOptions(dir, currentType);
+      }
+    });
+    list.appendChild(item);
+  });
+}
+
+document.getElementById('btn-add-topic').addEventListener('click', function(){
+  config.topics.push({name:'', path:'topic'+(config.topics.length+1), direction:'in', type:'chart', color:'#ffc107'});
+  renderTopicEditor();
+});
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('btn-config-now').addEventListener('click', openSettings);
+document.getElementById('modal-close').addEventListener('click', closeSettings);
+document.getElementById('modal-cancel').addEventListener('click', closeSettings);
+
+document.getElementById('modal-save').addEventListener('click', function(){
+  var items = document.querySelectorAll('.topic-item');
+  var topics = [];
+  items.forEach(function(item){
+    var name = item.querySelector('.f-name').value.trim();
+    var path = item.querySelector('.f-path').value.trim();
+    var dir = item.querySelector('.f-dir').value;
+    var type = item.querySelector('.f-type').value;
+    if (!path) return;
+    topics.push({name: name||path, path: path, direction: dir, type: type, color: '#ffc107'});
+  });
+  config.topics = topics;
+  saveConfig();
+  renderDashboard();
+  closeSettings();
+  toast('配置已保存 (' + topics.length + ' 个主题)', 'success');
+});
+
+// ===== INIT =====
+loadConfig();
+renderDashboard();
+connectWS();
+updateStatus();
+
+// Resize charts
+var resizeTimer;
+window.addEventListener('resize', function(){
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function(){
+    for (var k in chartInstances) resizeChart(parseInt(k));
+  }, 100);
+});
+
+})();
+</script>
+</body>
+</html>
