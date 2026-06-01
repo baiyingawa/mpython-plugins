@@ -105,37 +105,36 @@ def detect_install_state(build_dir):
 
 
 def patch_index_html(index_path, is_update):
-    """在 index.html 的 </body> 前插入 mplugin-core.js，先备份（仅首次）"""
+    """在 index.html 的 </body> 前插入 mplugin-core.js（二进制读写，防编码损坏）"""
     backup = index_path + ".backup"
     has_backup = os.path.isfile(backup)
 
-    with open(index_path, "r", encoding="utf-8", errors="replace") as f:
-        current_html = f.read()
+    with open(index_path, "rb") as f:
+        raw = f.read()
 
-    # 脚本引用已存在 → 无事可做
-    if SCRIPT_NAME in current_html:
+    # 检查脚本引用是否已存在
+    tag_bytes = b'<script src="./' + SCRIPT_NAME.encode() + b'"></script>'
+    if tag_bytes in raw:
         if is_update:
             print(f"  [跳过] {SCRIPT_NAME} 引用已存在")
         return True
 
-    # 脚本引用不存在 → 需要修补
+    # 需要修补
     if is_update:
-        # 更新模式：索引被 mPython 更新覆盖了，重新修补（不重新备份）
         print(f"  [检测] index.html 缺少 {SCRIPT_NAME} 引用，重新修补")
     else:
-        # 首次安装：先备份
         if not has_backup:
             shutil.copy2(index_path, backup)
             print(f"  [备份] {index_path} → {backup}")
 
-    tag = f'<script src="./{SCRIPT_NAME}"></script>'
-    if '</body>' in current_html:
-        new_html = current_html.replace('</body>', tag + '\n</body>')
+    body_end = b'</body>'
+    if body_end in raw:
+        new_raw = raw.replace(body_end, tag_bytes + b'\n' + body_end, 1)
     else:
-        new_html = current_html + '\n' + tag
+        new_raw = raw.rstrip() + b'\n' + tag_bytes + b'\n'
 
-    with open(index_path, "w", encoding="utf-8") as f:
-        f.write(new_html)
+    with open(index_path, "wb") as f:
+        f.write(new_raw)
 
     action = "重新" if is_update else ""
     print(f"  [修改] index.html → 已{action}插入 {SCRIPT_NAME}")
