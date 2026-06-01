@@ -211,16 +211,33 @@ def patch_preload(build_dir):
     content_tail = content[-len(patch_text)-20:] if len(content) > len(patch_text)+20 else content
     tail_hash = hashlib.sha256(content_tail.encode()).hexdigest()[:12]
     if tail_hash == patch_hash:
-        print(f"  [跳过] preload.min.js 补丁哈希一致，无需更新 ({patch_hash})")
-        return True
-    # 哈希不匹配 → 追加新版补丁（自动覆盖旧版）
-    if '"mqttHelper"' in content:
-        print(f"  [更新] preload.min.js 存在旧版补丁，覆盖为新版")
+        # 再验证括号平衡（防止上次写入被截断的假一致）
+        ob = content.count("{")
+        cb = content.count("}")
+        if ob == cb:
+            print(f"  [跳过] preload.min.js 补丁一致，无需更新 ({patch_hash})")
+            return True
+        else:
+            print(f"  [修复] preload.min.js 补丁一致但括号不平衡 (开{ob}闭{cb})，重新写入")
+    else:
+        # 不一致 → 需要写入/覆盖
+        if '"mqttHelper"' in content:
+            print(f"  [更新] preload.min.js 存在旧版/损坏补丁，重新写入")
     content = content.rstrip() + "\n\n" + patch_text
     with open(preload_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  ✓ preload.min.js → 已注入 mqttHelper ({patch_hash})")
-    return True
+        f.flush()
+    # 写入后验证括号平衡
+    with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
+        verified = f.read()
+    ob2 = verified.count("{")
+    cb2 = verified.count("}")
+    if ob2 == cb2:
+        print(f"  ✓ preload.min.js → 已注入 mqttHelper ({patch_hash})")
+        return True
+    else:
+        print(f"  ❌ 写入后括号仍不平衡 (开{ob2}闭{cb2})！文件可能被锁定，请关闭 mPython 后重试")
+        return False
 
 
 # ================================================================
