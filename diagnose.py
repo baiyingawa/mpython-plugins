@@ -25,11 +25,12 @@ def find_mpython():
     return None, None
 
 
-def check_file(path, label):
-    if not os.path.isfile(path):
-        return f"  ✗ {label}: 不存在"
-    size = os.path.getsize(path)
-    return f"  ✓ {label}: 存在 ({size/1024:.1f}KB)"
+def check_file(dir_path, filename):
+    full = os.path.join(dir_path, filename)
+    if not os.path.isfile(full):
+        return f"  ✗ {filename}: 不存在"
+    size = os.path.getsize(full)
+    return f"  ✓ {filename}: 存在 ({size/1024:.1f}KB)"
 
 
 def main():
@@ -74,6 +75,27 @@ def main():
         elif "require('child_process')" in core:
             print("  IPC 模式:   require (nodeIntegration)")
         print()
+
+    # 3b. 对比包版本和安装版本
+    pkg_path = os.path.join(build_dir, "mplugin_pkg.json")
+    if os.path.isfile(pkg_path):
+        with open(pkg_path, "r") as f:
+            pkg = json.load(f)
+        pkg_core = os.path.join(pkg.get('package_dir', ''), "mplugin-core.js")
+        if os.path.isfile(pkg_core):
+            with open(pkg_core, "r", encoding="utf-8", errors="replace") as f:
+                pkg_core_content = f.read()
+            pkg_ver = re.search(r"VERSION\s*=\s*'([\d.]+)'", pkg_core_content)
+            build_ver = re.search(r"VERSION\s*=\s*'([\d.]+)'", core) if os.path.isfile(core_path) else None
+            pv = pkg_ver.group(1) if pkg_ver else "?"
+            bv = build_ver.group(1) if build_ver else "?"
+            if pv == bv:
+                print(f"  版本一致: {pv} ✅")
+            else:
+                print(f"  版本不一致: 包内 {pv} → 已安装 {bv} ⚠️ 需要重新安装!")
+        else:
+            print(f"  [注] 包内无 mplugin-core.js，可能解压不完整")
+    print()
 
     # 4. preload.min.js 补丁检查
     preload_path = os.path.join(app_dir, "preload.min.js")
