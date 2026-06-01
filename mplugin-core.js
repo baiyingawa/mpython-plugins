@@ -833,7 +833,8 @@
           '<value name="keepalive"><shadow type="math_number"><field name="NUM">30</field></shadow></value>' +
         '</block>';
 
-      function injectMqttBlock(localIp) {
+      function injectMqttBlock(localIp, tryCount) {
+        if (tryCount === undefined) tryCount = 0;
         try {
           // 1. 获取 workspace 和当前 XML
           var ws = api.getWorkspace();
@@ -942,7 +943,8 @@
 
           api.log('注入完成');
 
-          // 验证：延迟等 mPython 加载文件后检查积木是否存在
+          // 验证 + 重试逻辑
+          // tryCount 0=首次 1=自动重试 2=询问重试 3-4=继续询问 5=放弃
           setTimeout(function() {
             try {
               var ws2 = api.getWorkspace();
@@ -950,9 +952,26 @@
               var xml2 = api.getXML(ws2);
               if (xml2 && xml2.indexOf('mqtt_common_setup') > -1) {
                 api.log('验证通过: MQTT 积木已加载');
+                if (tryCount >= 2) alert('注入成功！');
+                return;
+              }
+              // 未找到 → 需要重试
+              tryCount++;
+              if (tryCount >= 5) {
+                alert('MQTT 积木注入失败，请反馈问题。');
+                return;
+              }
+              if (tryCount <= 1) {
+                // 前两次自动重试
+                api.log('注入重试: 第 ' + (tryCount+1) + ' 次');
+                injectMqttBlock(localIp, tryCount);
               } else {
-                if (confirm('MQTT 积木注入可能未成功，是否重新注入？')) {
-                  injectMqttBlock(localIp);
+                // 后续每次询问用户
+                if (confirm('MQTT 积木注入可能未成功，第 ' + (tryCount+1) + ' 次尝试，是否重新注入？')) {
+                  api.log('注入重试: 用户确认');
+                  injectMqttBlock(localIp, tryCount);
+                } else {
+                  api.log('注入重试: 用户取消');
                 }
               }
             } catch(e) { api.err('验证失败:', e.message); }
