@@ -48,28 +48,30 @@ def main():
         print("--- preload.min.js ---")
         with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
-        # 移除所有 try{(function(){...mqttHelper...})()}catch(e){} 补丁
-        new_content = re.sub(
-            r'try\s*\(\s*function\s*\(\s*\)\s*\{[^}]*mqttHelper[^}]*\}\s*\)\s*\(\s*\)\s*\)?\s*catch\s*\(\s*e\s*\)\s*\{\s*\}\s*',
-            '', content, flags=re.DOTALL
-        )
-        # 也移除 autosaveHelper 补丁
-        new_content = re.sub(
-            r'try\s*\(\s*function\s*\(\s*\)\s*\{[^}]*autosaveHelper[^}]*\}\s*\)\s*\(\s*\)\s*\)?\s*catch\s*\(\s*e\s*\)\s*\{\s*\}\s*',
-            '', new_content, flags=re.DOTALL
-        )
-        # 清理多余空行
-        new_content = re.sub(r'\n{3,}', '\n\n', new_content)
-        new_content = new_content.strip()
 
-        if new_content != content:
-            # 做备份
+        # 逐段拆分：以 try{(function(){ 为分隔，检查每段是否含我们的标记
+        marker_start = 'try{(function(){'
+        parts = content.split(marker_start)
+        new_parts = [parts[0]]  # 第一段（原始代码）保留
+        removed = 0
+        for seg in parts[1:]:
+            # 如果这段含有 mqttHelper 或 autosaveHelper，整体移除
+            if 'mqttHelper' in seg or 'autosaveHelper' in seg:
+                removed += 1
+                continue
+            # 否则保留，加回分隔符
+            new_parts.append(marker_start + seg)
+        new_content = ''.join(new_parts)
+        new_content = re.sub(r'\n{3,}', '\n\n', new_content).strip()
+
+        if removed > 0:
             bak = preload_path + ".repair_bak"
             shutil.copy2(preload_path, bak)
             print(f"  [备份] → {bak}")
+            print(f"  [移除] {removed} 个 MPlugins 补丁段")
             with open(preload_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            print(f"  ✓ 已清除所有 MPlugins 补丁")
+            print(f"  ✓ preload.min.js 已修复")
             fixed_preload = True
         else:
             print(f"  - 未发现 MPlugins 补丁，无需修复")
