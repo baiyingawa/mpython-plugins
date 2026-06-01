@@ -1,5 +1,5 @@
 /**
- * MPlugins — mPython 插件框架 v1.50
+ * MPlugins — mPython 插件框架 v1.60
  * - 框架核心：日志、顶栏引擎、模块注册表、workspace/API 工具
  * - 模块集成：autosave（自动保存）
  * - 框架自动维护顶栏生命期，模块只管注册自己的逻辑
@@ -11,7 +11,7 @@
   //  第一部分：框架核心
   // ================================================================
 
-  var VERSION = '1.50';
+  var VERSION = '1.60';
   var LOG = [];
   // 统一的间距 CSS（所有 body 子元素下移，插件自身除外）
   var SPACER_CSS = 'body>#app{margin-top:28px!important}';
@@ -1163,7 +1163,7 @@
     return '<div style="position:relative;width:800px;padding:0;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 30px 10px 14px;border-bottom:1px solid #0f3460;">' +
       '<span style="color:#e94560;font-weight:bold;font-size:15px;">MPlugins</span>' +
-      '<span style="color:#666;font-size:11px;margin-right:10px;">v' + (VERSION || '1.50') + '</span>' +
+      '<span style="color:#666;font-size:11px;margin-right:10px;">v' + (VERSION || '1.60') + '</span>' +
       '<span id="mplugin-diag-btn" style="color:#ff9800;font-size:11px;cursor:pointer;">[诊断]</span></div>' +
       '<div style="padding:0 14px 14px;">' +
       '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:10px;">' +

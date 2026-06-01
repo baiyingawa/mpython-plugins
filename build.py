@@ -44,15 +44,23 @@ def replace_in_file(path, old, new):
 
 
 def update_file(path, old_ver, new_ver):
-    """将文件中所有 v{old_ver} 替换为 v{new_ver}"""
+    """将文件中所有 v{old_ver} 和 '{old_ver}' 替换为 v{new_ver} 和 '{new_ver}'"""
     count = 0
     with open(path, "r", encoding="utf-8") as f:
         data = f.read()
-    old_str = f"v{old_ver}"
-    new_str = f"v{new_ver}"
-    if old_str in data:
-        data = data.replace(old_str, new_str)
-        count += data.count(new_str)  # approximate
+    # 替换 vX.XX 模式
+    old_v = f"v{old_ver}"
+    new_v = f"v{new_ver}"
+    if old_v in data:
+        data = data.replace(old_v, new_v)
+        count += 1
+    # 替换 VERSION = 'X.XX' 模式
+    old_q = f"'{old_ver}'"
+    new_q = f"'{new_ver}'"
+    if old_q in data:
+        data = data.replace(old_q, new_q)
+        count += 1
+    if count > 0:
         with open(path, "w", encoding="utf-8") as f:
             f.write(data)
     return count > 0
