@@ -802,6 +802,30 @@
       var mqttEls = {};
       var _iotStopTriggered = false;
 
+      // 注入失败帮助弹窗
+      function showInjectHelp(localIp) {
+        var overlay = document.createElement('div');
+        overlay.id = 'mplugin-inject-help';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
+        var imgPath = (_pkgDir || 'E:\\PROJECT\\MpythonPlugins') + '/mqtt/static/mqtt-block-help.png';
+        overlay.innerHTML =
+          '<div style="background:#1a1a2e;border:1px solid #0f3460;border-radius:10px;padding:20px;max-width:600px;width:90%;max-height:90vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#e0e0e0;font-family:Segoe UI,sans-serif;">' +
+            '<h2 style="color:#e94560;margin:0 0 12px;font-size:16px;">MQTT 积木注入失败</h2>' +
+            '<p style="color:#b0b0b0;font-size:13px;margin:0 0 16px;">请检查后重试，或手动添加 MQTT 连接积木：</p>' +
+            '<div style="margin-bottom:12px;">' +
+              '<span style="color:#888;font-size:12px;">1. 在程序中拖出 MQTT 连接积木</span><br>' +
+              '<span style="color:#888;font-size:12px;">2. 服务器 IP 填入：<strong style="color:#4ecdc4;font-size:14px;">' + localIp + '</strong></span><br>' +
+              '<span style="color:#888;font-size:12px;">3. 账号 zkb 密码 zkb1234 端口 1883</span><br>' +
+              '<span style="color:#888;font-size:12px;">4. 参考下方积木位置</span>' +
+            '</div>' +
+            '<div style="background:#0a0a1e;border-radius:6px;padding:8px;margin-bottom:16px;text-align:center;">' +
+              '<img src="file:///' + imgPath.replace(/\\\\/g, '/') + '" style="max-width:100%;border-radius:4px;" onerror="this.style.display=\'none\'">' +
+            '</div>' +
+            '<button onclick="var e=document.getElementById(\'mplugin-inject-help\');if(e)e.parentNode.removeChild(e);" style="background:#e94560;color:#fff;border:none;border-radius:6px;padding:8px 24px;font-size:14px;cursor:pointer;display:block;margin:0 auto;">确定</button>' +
+          '</div>';
+        document.body.appendChild(overlay);
+      }
+
       // 子进程执行封装：优先用 preload 暴露的 mqttHelper，备用 require (nodeIntegration:true 时)
       var _cpExec = null;
       try { _cpExec = require('child_process').exec; } catch(e) {}
@@ -958,7 +982,8 @@
               // 未找到 → 需要重试
               tryCount++;
               if (tryCount >= 5) {
-                alert('MQTT 积木注入失败，请反馈问题。');
+                showInjectHelp(localIp);
+                api.log('注入失败: 已显示帮助面板');
                 return;
               }
               if (tryCount <= 1) {
