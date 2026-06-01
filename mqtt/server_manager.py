@@ -89,6 +89,7 @@ def start():
 
 def stop():
     killed = []
+    current_pid = os.getpid()
     if os.path.exists(PID_FILE):
         with open(PID_FILE) as f:
             pids = json.load(f)
@@ -100,10 +101,12 @@ def stop():
             except:
                 pass
         os.remove(PID_FILE)
-    # 补杀
+    # 补杀（排除自身进程，避免自杀报错）
     subprocess.run(["taskkill", "/F", "/IM", "mosquitto.exe"], capture_output=True)
-    subprocess.run(["taskkill", "/F", "/IM", "python.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/FI", f"PID ne {current_pid}", "/IM", "python.exe"],
+                   capture_output=True)
     print(json.dumps({"status": "stopped", "killed": killed}))
+    sys.exit(0)
 
 
 def do_status():
