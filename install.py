@@ -6,7 +6,7 @@ MPlugins for mPython v1.60 — 安装/更新脚本
 自动查找 mPython 安装位置，备份原文件，安装或更新 MPlugins 插件框架。
 支持保存 mPython 位置配置，后续安装/更新无需重复搜索。
 """
-import os, sys, shutil, json, subprocess, urllib.request, urllib.error, platform, zipfile
+import os, sys, shutil, json, subprocess, urllib.request, urllib.error, platform, zipfile, hashlib
 
 PACKAGE_DIR   = os.path.dirname(os.path.abspath(__file__))
 CFG_FILE      = os.path.join(os.path.expanduser("~"), ".mpython_autosave", "mpython_cfg.json")
@@ -142,14 +142,33 @@ def patch_index_html(index_path, is_update):
     return True
 
 
+def file_hash(path):
+    """计算文件 SHA256 哈希"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk: break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def copy_plugin_files(build_dir):
-    """复制插件文件到 build 目录"""
+    """复制插件文件到 build 目录（哈希不一致才替换）"""
     success = True
     src = os.path.join(PACKAGE_DIR, SCRIPT_NAME)
     dst = os.path.join(build_dir, SCRIPT_NAME)
     if not os.path.isfile(src):
         print(f"  [!] 缺失文件: {src}")
         return False
+    # 哈希比较
+    if os.path.isfile(dst):
+        src_hash = file_hash(src)
+        dst_hash = file_hash(dst)
+        if src_hash == dst_hash:
+            print(f"  [跳过] {SCRIPT_NAME} 哈希一致，无需更新")
+            return True
+        print(f"  [哈希] {SCRIPT_NAME} 不一致，更新...")
     try:
         shutil.copy2(src, dst)
         size = os.path.getsize(dst)
@@ -180,24 +199,28 @@ try{(function(){var e=require("electron"),c=require("child_process");e.contextBr
 
 
 def patch_preload(build_dir):
-    """修补 preload.min.js → 暴露 mqttHelper 到渲染进程"""
+    """修补 preload.min.js → 暴露 mqttHelper 到渲染进程（哈希不一致才修补）"""
     preload_path = os.path.join(os.path.dirname(build_dir), "preload.min.js")
     if not os.path.isfile(preload_path):
         print(f"  [!] 未找到 {preload_path}，跳过修补")
         return False
     with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
         content = f.read()
-    # 检测新版补丁（直接 require child_process）
-    if 'require("child_process")' in content and '"mqttHelper"' in content:
-        print("  [跳过] preload.min.js 已修补（新版）")
+    patch_text = _PRELOAD_EXPOSE.strip()
+    patch_hash = hashlib.sha256(patch_text.encode()).hexdigest()[:12]
+    # 检测补丁是否已存在（通过哈希匹配末尾内容）
+    content_tail = content[-len(patch_text)-20:] if len(content) > len(patch_text)+20 else content
+    tail_hash = hashlib.sha256(content_tail.encode()).hexdigest()[:12]
+    if tail_hash == patch_hash:
+        print(f"  [跳过] preload.min.js 补丁哈希一致，无需更新 ({patch_hash})")
         return True
+    # 哈希不匹配 → 追加新版补丁（自动覆盖旧版）
     if '"mqttHelper"' in content:
-        print("  [检测] 存在旧版补丁（IPC 转发版），覆盖为新版...")
-    # 追加新版补丁（覆盖旧版 ipcRenderer.invoke → 直接 child_process.exec）
-    content = content.rstrip() + "\n\n" + _PRELOAD_EXPOSE.strip()
+        print(f"  [更新] preload.min.js 存在旧版补丁，覆盖为新版")
+    content = content.rstrip() + "\n\n" + patch_text
     with open(preload_path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  ✓ preload.min.js → 已注入 mqttHelper")
+    print(f"  ✓ preload.min.js → 已注入 mqttHelper ({patch_hash})")
     return True
 
 
