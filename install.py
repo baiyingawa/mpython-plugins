@@ -187,11 +187,13 @@ def patch_preload(build_dir):
         return False
     with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
         content = f.read()
-    if '"mqttHelper"' in content:
-        print("  [跳过] preload.min.js 已修补")
+    # 检测新版补丁（直接 require child_process）
+    if 'require("child_process")' in content and '"mqttHelper"' in content:
+        print("  [跳过] preload.min.js 已修补（新版）")
         return True
-    # 追加到末尾（防重复：已有 autosaveHelper 的替换，没有的追加）
-    # 确保末尾有换行
+    if '"mqttHelper"' in content:
+        print("  [检测] 存在旧版补丁（IPC 转发版），覆盖为新版...")
+    # 追加新版补丁（覆盖旧版 ipcRenderer.invoke → 直接 child_process.exec）
     content = content.rstrip() + "\n\n" + _PRELOAD_EXPOSE.strip()
     with open(preload_path, "w", encoding="utf-8") as f:
         f.write(content)
