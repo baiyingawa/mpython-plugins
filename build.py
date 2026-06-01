@@ -16,7 +16,8 @@ VERSION_FILE = os.path.join(PACKAGE_DIR, "version.txt")
 CFG_FILE     = os.path.join(os.path.expanduser("~"), ".mpython_autosave", "mpython_cfg.json")
 LIVE_SOURCE  = r"D:\APP DATA\mPython\resources\app\build\mplugin-core.js"
 
-FILES_TO_PACK = ["mplugin-core.js", "install.py", "uninstall.py", "README.html"]
+FILES_TO_PACK = ["mplugin-core.js", "install.py", "uninstall.py", "README.md"]
+MQTT_DIR      = os.path.join(PACKAGE_DIR, "mqtt")
 
 
 def read_version():
@@ -76,6 +77,22 @@ def pack(version):
                 z.write(fp, f)
                 packed += 1
                 print(f"  ✓ {f}")
+        # 打包 mqtt/ 目录（排除 venv 和 bin）
+        mqtt_dir = os.path.join(PACKAGE_DIR, "mqtt")
+        if os.path.isdir(mqtt_dir):
+            for root, dirs, files in os.walk(mqtt_dir):
+                # 跳过 venv 和 bin（太大/安装时下载）
+                rel = os.path.relpath(root, PACKAGE_DIR)
+                parts = rel.replace("\\", "/").split("/")
+                if "venv" in parts or "bin" in parts or "__pycache__" in parts:
+                    continue
+                for f in files:
+                    if f.endswith(".pyc") or f.endswith(".log") or f == ".mqtt_cfg.json":
+                        continue
+                    fp = os.path.join(root, f)
+                    arcname = os.path.relpath(fp, PACKAGE_DIR).replace("\\", "/")
+                    z.write(fp, arcname)
+                    packed += 1
     if packed == 0:
         print("  [!] 没有文件被打包")
         return None
