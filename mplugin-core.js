@@ -941,6 +941,22 @@
           } catch(e) { api.log('注入: 文件已保存，请手动打开'); }
 
           api.log('注入完成');
+
+          // 验证：延迟等 mPython 加载文件后检查积木是否存在
+          setTimeout(function() {
+            try {
+              var ws2 = api.getWorkspace();
+              if (!ws2) return;
+              var xml2 = api.getXML(ws2);
+              if (xml2 && xml2.indexOf('mqtt_common_setup') > -1) {
+                api.log('验证通过: MQTT 积木已加载');
+              } else {
+                if (confirm('MQTT 积木注入可能未成功，是否重新注入？')) {
+                  injectMqttBlock(localIp);
+                }
+              }
+            } catch(e) { api.err('验证失败:', e.message); }
+          }, 3000);
         } catch(e) { api.err('注入失败:', e.message); }
       }
 
