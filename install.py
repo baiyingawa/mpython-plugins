@@ -198,45 +198,52 @@ try{(function(){var e=require("electron"),c=require("child_process");e.contextBr
 
 
 def patch_preload(build_dir):
-    """修补 preload.min.js → 暴露 mqttHelper 到渲染进程（哈希不一致才修补）"""
+    """修补 preload.min.js → 暴露 mqttHelper（二进制读写，防编码损坏）"""
     preload_path = os.path.join(os.path.dirname(build_dir), "preload.min.js")
     if not os.path.isfile(preload_path):
         print(f"  [!] 未找到 {preload_path}，跳过修补")
         return False
-    with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
-    patch_text = _PRELOAD_EXPOSE.strip()
-    patch_hash = hashlib.sha256(patch_text.encode()).hexdigest()[:12]
-    # 检测补丁是否已存在（通过哈希匹配末尾内容）
-    content_tail = content[-len(patch_text)-20:] if len(content) > len(patch_text)+20 else content
-    tail_hash = hashlib.sha256(content_tail.encode()).hexdigest()[:12]
+
+    # 二进制读写，彻底避免编码问题
+    patch_bytes = _PRELOAD_EXPOSE.encode("utf-8").strip()
+    patch_hash = hashlib.sha256(patch_bytes).hexdigest()[:12]
+
+    with open(preload_path, "rb") as f:
+        raw = f.read()
+
+    # 检测补丁是否已完整存在（末尾哈希匹配）
+    tail = raw[-len(patch_bytes)-20:] if len(raw) > len(patch_bytes)+20 else raw
+    tail_hash = hashlib.sha256(tail).hexdigest()[:12]
     if tail_hash == patch_hash:
-        # 再验证括号平衡（防止上次写入被截断的假一致）
-        ob = content.count("{")
-        cb = content.count("}")
+        # 再验证括号平衡
+        ob = raw.count(b"{")
+        cb = raw.count(b"}")
         if ob == cb:
             print(f"  [跳过] preload.min.js 补丁一致，无需更新 ({patch_hash})")
             return True
         else:
             print(f"  [修复] preload.min.js 补丁一致但括号不平衡 (开{ob}闭{cb})，重新写入")
     else:
-        # 不一致 → 需要写入/覆盖
-        if '"mqttHelper"' in content:
+        if b"mqttHelper" in raw:
             print(f"  [更新] preload.min.js 存在旧版/损坏补丁，重新写入")
-    content = content.rstrip() + "\n\n" + patch_text
-    with open(preload_path, "w", encoding="utf-8") as f:
-        f.write(content)
+
+    # 二进制写入
+    new_raw = raw.rstrip() + b"\n\n" + patch_bytes
+    with open(preload_path, "wb") as f:
+        f.write(new_raw)
         f.flush()
-    # 写入后验证括号平衡
-    with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
+        os.fsync(f.fileno())
+
+    # 二进制验证
+    with open(preload_path, "rb") as f:
         verified = f.read()
-    ob2 = verified.count("{")
-    cb2 = verified.count("}")
+    ob2 = verified.count(b"{")
+    cb2 = verified.count(b"}")
     if ob2 == cb2:
         print(f"  ✓ preload.min.js → 已注入 mqttHelper ({patch_hash})")
         return True
     else:
-        print(f"  ❌ 写入后括号仍不平衡 (开{ob2}闭{cb2})！文件可能被锁定，请关闭 mPython 后重试")
+        print(f"  ❌ 写入后括号仍不平衡 (开{ob2}闭{cb2})！请确认 mPython 已关闭后重试")
         return False
 
 
@@ -313,9 +320,21 @@ def install_mosquitto():
 def install_mqtt_venv():
     print()
     print("  --- Python 虚拟环境 ---")
-    if os.path.isdir(VENV_DIR) and os.path.isfile(os.path.join(VENV_DIR, "Scripts", "python.exe")):
-        print("  ✓ 虚拟环境已存在")
-    else:
+    venv_ok = os.path.isdir(VENV_DIR) and os.path.isfile(os.path.join(VENV_DIR, "Scripts", "python.exe"))
+    # 检查 venv 路径是否匹配当前目录（防止复制后路径不对）
+    if venv_ok:
+        try:
+            py_test = os.path.join(VENV_DIR, "Scripts", "python.exe")
+            r = subprocess.run([py_test, "--version"], capture_output=True, timeout=5)
+            if r.returncode != 0:
+                print("  [发现] venv 路径不匹配，重新创建...")
+                shutil.rmtree(VENV_DIR, ignore_errors=True)
+                venv_ok = False
+        except:
+            print("  [发现] venv 不可用，重新创建...")
+            shutil.rmtree(VENV_DIR, ignore_errors=True)
+            venv_ok = False
+    if not venv_ok:
         print("  创建虚拟环境...")
         subprocess.run([sys.executable, "-m", "venv", VENV_DIR], check=True)
         print("  ✓ 虚拟环境已创建")
