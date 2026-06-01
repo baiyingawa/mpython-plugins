@@ -784,17 +784,36 @@
     name: 'IoT 服务器',
 
     init: function(api) {
-      var scriptDir = 'E:\\PROJECT\\MpythonPlugins\\mqtt';
+      // 从 mplugin_pkg.json 读取包路径（install.py 写入）
+      var _pkgDir = '';
+      try {
+        var _req = new XMLHttpRequest();
+        _req.open('GET', './mplugin_pkg.json', false);
+        _req.send();
+        if (_req.status === 200 || _req.status === 0) {
+          var _cfg = JSON.parse(_req.responseText);
+          _pkgDir = _cfg.package_dir || '';
+        }
+      } catch(e) {}
+      // 回退硬编码路径（本地开发）
+      var scriptDir = (_pkgDir || 'E:\\PROJECT\\MpythonPlugins') + '\\mqtt';
       var python = scriptDir + '\\venv\\Scripts\\python.exe';
       var script = scriptDir + '\\server_manager.py';
       var mqttEls = {};
       var _iotStopTriggered = false;
 
-      // 子进程执行封装（nodeIntegration: true, 直接 require child_process）
+      // 子进程执行封装：优先用 preload 暴露的 mqttHelper，备用 require (nodeIntegration:true 时)
       var _cpExec = null;
       try { _cpExec = require('child_process').exec; } catch(e) {}
       function execAsync(cmd) {
         return new Promise(function(resolve, reject) {
+          // 优先 mqttHelper（preload 桥接，最可靠）
+          var helper = window.mqttHelper;
+          if (helper && typeof helper.exec === 'function') {
+            helper.exec(cmd).then(resolve).catch(reject);
+            return;
+          }
+          // 备用：直接 child_process
           if (!_cpExec) { reject('child_process 不可用'); return; }
           _cpExec(cmd, { maxBuffer: 1024 * 1024, cwd: scriptDir, windowsHide: true }, function(error, stdout, stderr) {
             if (error) reject(error.message + '\nstderr:' + stderr);
@@ -906,12 +925,18 @@
           api.saveFile(savePath, mergedXml, savePath);
           api.log('注入: 已保存 ' + savePath);
 
-          // 8. 打开文件（尝试用 Electron shell 打开，不可用则跳过）
+          // 8. 打开文件（优先 mqttHelper IPC，备用 Electron shell）
           try {
-            var _shell = require('electron').shell;
-            if (_shell && typeof _shell.openPath === 'function') {
-              _shell.openPath(savePath);
+            var helper = window.mqttHelper;
+            if (helper && typeof helper.openFile === 'function') {
+              helper.openFile(savePath);
               api.log('注入: 已打开');
+            } else {
+              var _shell = require('electron').shell;
+              if (_shell && typeof _shell.openPath === 'function') {
+                _shell.openPath(savePath);
+                api.log('注入: 已打开');
+              }
             }
           } catch(e) { api.log('注入: 文件已保存，请手动打开'); }
 

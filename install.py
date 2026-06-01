@@ -171,6 +171,94 @@ def ensure_backup_dir():
 
 
 # ================================================================
+#  IPC 桥修补（preload.min.js + otherUtil.js）
+# ================================================================
+
+_PRELOAD_EXPOSE = """
+try{(function(){const{ipcRenderer:i,contextBridge:b}=require("electron");b.exposeInMainWorld("mqttHelper",{openFile:function(p){return i.send("mqtt-open-file",p)},exec:function(c){return i.invoke("mqtt-exec",c)},spawn:function(c,a){return i.invoke("mqtt-spawn",c,a)},kill:function(n){return i.invoke("mqtt-kill",n)}})})()}catch(e){}
+"""
+
+_OTHER_UTIL_HANDLERS = """
+\t\tipcMain.handle('mqtt-exec', async (event, cmd) => {
+\t\t\tconst { exec } = require('child_process');
+\t\t\treturn new Promise((resolve, reject) => {
+\t\t\t\texec(cmd, { maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+\t\t\t\t\tif (error) reject('code:' + error.code + ' msg:' + error.message + '\\nstderr:' + stderr + '\\nstdout:' + stdout);
+\t\t\t\t\telse resolve(stdout);
+\t\t\t\t});
+\t\t\t});
+\t\t})
+\t\tipcMain.handle('mqtt-spawn', async (event, cmd, args) => {
+\t\t\tconst { spawn } = require('child_process');
+\t\t\treturn new Promise((resolve, reject) => {
+\t\t\t\tvar child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+\t\t\t\tchild.unref();
+\t\t\t\tresolve('ok');
+\t\t\t});
+\t\t})
+\t\tipcMain.handle('mqtt-kill', async (event, name) => {
+\t\t\tconst { exec } = require('child_process');
+\t\t\treturn new Promise((resolve, reject) => {
+\t\t\t\texec('taskkill /F /IM ' + name, { windowsHide: true }, (error, stdout, stderr) => {
+\t\t\t\t\tresolve(stdout || 'killed');
+\t\t\t\t});
+\t\t\t});
+\t\t})
+\t\tipcMain.on('mqtt-open-file', (event, filePath) => {
+\t\t\ttry {
+\t\t\t\tif (!fs.existsSync(filePath)) return;
+\t\t\t\tvar data = fs.readFileSync(filePath, 'utf-8');
+\t\t\t\tvar name = filePath.substring(filePath.lastIndexOf('\\\\')+1);
+\t\t\t\tmainWindow.webContents.send('openFiler', { path: filePath, data: data, name: name });
+\t\t\t} catch(e) { console.error(e); }
+\t\t})
+"""
+
+
+def patch_preload(build_dir):
+    """修补 preload.min.js → 暴露 mqttHelper 到渲染进程"""
+    preload_path = os.path.join(os.path.dirname(build_dir), "preload.min.js")
+    if not os.path.isfile(preload_path):
+        print(f"  [!] 未找到 {preload_path}，跳过修补")
+        return False
+    with open(preload_path, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+    if '"mqttHelper"' in content:
+        print("  [跳过] preload.min.js 已修补")
+        return True
+    # 追加到末尾（防重复：已有 autosaveHelper 的替换，没有的追加）
+    # 确保末尾有换行
+    content = content.rstrip() + "\n\n" + _PRELOAD_EXPOSE.strip()
+    with open(preload_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"  ✓ preload.min.js → 已注入 mqttHelper")
+    return True
+
+
+def patch_other_util(build_dir):
+    """修补 otherUtil.js → 添加 MQTT IPC 处理器"""
+    other_path = os.path.join(os.path.dirname(build_dir), "otherUtil.js")
+    if not os.path.isfile(other_path):
+        print(f"  [!] 未找到 {other_path}，跳过修补")
+        return False
+    with open(other_path, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+    if '"mqtt-exec"' in content:
+        print("  [跳过] otherUtil.js 已修补")
+        return True
+    # 在 installType handler 前插入（可靠的原始代码标记）
+    insert_before = 'ipcMain.on("installType"'
+    if insert_before not in content:
+        print(f"  [!] 无法定位插入点，跳过修补")
+        return False
+    content = content.replace(insert_before, _OTHER_UTIL_HANDLERS + "\n\t\t" + insert_before, 1)
+    with open(other_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"  ✓ otherUtil.js → 已注入 MQTT IPC 处理器")
+    return True
+
+
+# ================================================================
 #  MQTT 环境安装（Mosquitto + Python 虚拟环境）
 # ================================================================
 
@@ -348,20 +436,34 @@ def main():
     ensure_backup_dir()
     print()
 
-    # 6. 保存配置
+    # 6. 保存配置 + 写入包路径（mplugin-core.js 运行时读取）
     cfg.update({
         "mpython_root": root,
         "build_dir": build_dir,
         "version": "1.60",
     })
     save_config(cfg)
+    # 写入 mplugin_pkg.json → mplugin-core.js 通过它找到 mqtt/ 目录
+    try:
+        pkg_json = os.path.join(build_dir, "mplugin_pkg.json")
+        with open(pkg_json, "w", encoding="utf-8") as f:
+            json.dump({"package_dir": PACKAGE_DIR.replace("\\", "\\\\")}, f)
+        print(f"  [配置] 包路径已写入 {pkg_json}")
+    except Exception as e:
+        print(f"  [!] 写入包路径失败: {e}")
 
     action = "更新" if is_update else "安装"
     print("=" * 56)
     print(f"  ✓ 插件框架 {action}成功！")
     print()
 
-    # 7. MQTT 环境（自动）
+    # 7. IPC 桥修补（IoT 模块依赖 preload/otherUtil）
+    print("  --- IPC 桥修补 ---")
+    patch_preload(build_dir)
+    patch_other_util(build_dir)
+    print()
+
+    # 8. MQTT 环境（自动）
     print("  --- MQTT 环境 ---")
     install_mosquitto()
     install_mqtt_venv()
