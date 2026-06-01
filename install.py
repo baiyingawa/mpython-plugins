@@ -171,47 +171,11 @@ def ensure_backup_dir():
 
 
 # ================================================================
-#  IPC 桥修补（preload.min.js + otherUtil.js）
+#  IPC 桥修补（preload.min.js — preload 可直接 require child_process）
 # ================================================================
 
-_PRELOAD_EXPOSE = """
-try{(function(){const{ipcRenderer:i,contextBridge:b}=require("electron");b.exposeInMainWorld("mqttHelper",{openFile:function(p){return i.send("mqtt-open-file",p)},exec:function(c){return i.invoke("mqtt-exec",c)},spawn:function(c,a){return i.invoke("mqtt-spawn",c,a)},kill:function(n){return i.invoke("mqtt-kill",n)}})})()}catch(e){}
-"""
-
-_OTHER_UTIL_HANDLERS = """
-\t\tipcMain.handle('mqtt-exec', async (event, cmd) => {
-\t\t\tconst { exec } = require('child_process');
-\t\t\treturn new Promise((resolve, reject) => {
-\t\t\t\texec(cmd, { maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
-\t\t\t\t\tif (error) reject('code:' + error.code + ' msg:' + error.message + '\\nstderr:' + stderr + '\\nstdout:' + stdout);
-\t\t\t\t\telse resolve(stdout);
-\t\t\t\t});
-\t\t\t});
-\t\t})
-\t\tipcMain.handle('mqtt-spawn', async (event, cmd, args) => {
-\t\t\tconst { spawn } = require('child_process');
-\t\t\treturn new Promise((resolve, reject) => {
-\t\t\t\tvar child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-\t\t\t\tchild.unref();
-\t\t\t\tresolve('ok');
-\t\t\t});
-\t\t})
-\t\tipcMain.handle('mqtt-kill', async (event, name) => {
-\t\t\tconst { exec } = require('child_process');
-\t\t\treturn new Promise((resolve, reject) => {
-\t\t\t\texec('taskkill /F /IM ' + name, { windowsHide: true }, (error, stdout, stderr) => {
-\t\t\t\t\tresolve(stdout || 'killed');
-\t\t\t\t});
-\t\t\t});
-\t\t})
-\t\tipcMain.on('mqtt-open-file', (event, filePath) => {
-\t\t\ttry {
-\t\t\t\tif (!fs.existsSync(filePath)) return;
-\t\t\t\tvar data = fs.readFileSync(filePath, 'utf-8');
-\t\t\t\tvar name = filePath.substring(filePath.lastIndexOf('\\\\')+1);
-\t\t\t\tmainWindow.webContents.send('openFiler', { path: filePath, data: data, name: name });
-\t\t\t} catch(e) { console.error(e); }
-\t\t})
+_PRELOAD_EXPOSE = r"""
+try{(function(){var e=require("electron"),c=require("child_process");e.contextBridge.exposeInMainWorld("mqttHelper",{exec:function(m){return new Promise(function(a,b){c.exec(m,{maxBuffer:1048576,windowsHide:!0},function(e,o,s){e?b(e.message+"\nstderr:"+s):a(o)})})},spawn:function(m,a){var p=c.spawn(m,a,{detached:!0,stdio:"ignore"});return p.unref(),Promise.resolve("ok")},kill:function(n){return new Promise(function(a){c.exec("taskkill /F /IM "+n,{windowsHide:!0},function(){a("killed")})})},openFile:function(p){try{e.shell.openPath(p)}catch(e){}}})}catch(e){}
 """
 
 
@@ -232,29 +196,6 @@ def patch_preload(build_dir):
     with open(preload_path, "w", encoding="utf-8") as f:
         f.write(content)
     print(f"  ✓ preload.min.js → 已注入 mqttHelper")
-    return True
-
-
-def patch_other_util(build_dir):
-    """修补 otherUtil.js → 添加 MQTT IPC 处理器"""
-    other_path = os.path.join(os.path.dirname(build_dir), "otherUtil.js")
-    if not os.path.isfile(other_path):
-        print(f"  [!] 未找到 {other_path}，跳过修补")
-        return False
-    with open(other_path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
-    if '"mqtt-exec"' in content:
-        print("  [跳过] otherUtil.js 已修补")
-        return True
-    # 在 installType handler 前插入（可靠的原始代码标记）
-    insert_before = 'ipcMain.on("installType"'
-    if insert_before not in content:
-        print(f"  [!] 无法定位插入点，跳过修补")
-        return False
-    content = content.replace(insert_before, _OTHER_UTIL_HANDLERS + "\n\t\t" + insert_before, 1)
-    with open(other_path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"  ✓ otherUtil.js → 已注入 MQTT IPC 处理器")
     return True
 
 
@@ -457,10 +398,9 @@ def main():
     print(f"  ✓ 插件框架 {action}成功！")
     print()
 
-    # 7. IPC 桥修补（IoT 模块依赖 preload/otherUtil）
+    # 7. IPC 桥修补（preload 内直接 require child_process，无需碰 main process）
     print("  --- IPC 桥修补 ---")
     patch_preload(build_dir)
-    patch_other_util(build_dir)
     print()
 
     # 8. MQTT 环境（自动）
