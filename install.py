@@ -193,7 +193,7 @@ def ensure_backup_dir():
 # ================================================================
 
 _PRELOAD_EXPOSE = r"""
-try{(function(){var e=require("electron"),c=require("child_process");e.contextBridge.exposeInMainWorld("mqttHelper",{exec:function(m){return new Promise(function(a,b){c.exec(m,{maxBuffer:1048576,windowsHide:!0},function(e,o,s){e?b(e.message+"\nstderr:"+s):a(o)})})},spawn:function(m,a){var p=c.spawn(m,a,{detached:!0,stdio:"ignore"});return p.unref(),Promise.resolve("ok")},kill:function(n){return new Promise(function(a){c.exec("taskkill /F /IM "+n,{windowsHide:!0},function(){a("killed")})})},openFile:function(p){try{e.shell.openPath(p)}catch(e){}}})}catch(e){}
+try{(function(){var e=require("electron"),c=require("child_process");e.contextBridge.exposeInMainWorld("mqttHelper",{exec:function(m){return new Promise(function(a,b){c.exec(m,{maxBuffer:1048576,windowsHide:!0},function(e,o,s){e?b(e.message+"\nstderr:"+s):a(o)})})},spawn:function(m,a){var p=c.spawn(m,a,{detached:!0,stdio:"ignore"});return p.unref(),Promise.resolve("ok")},kill:function(n){return new Promise(function(a){c.exec("taskkill /F /IM "+n,{windowsHide:!0},function(){a("killed")})})},openFile:function(p){try{e.shell.openPath(p)}catch(e){}}}})}catch(e){}
 """
 
 
