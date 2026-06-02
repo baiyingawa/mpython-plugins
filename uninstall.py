@@ -148,6 +148,34 @@ def main():
     else:
         print(f"  - {SCRIPT_NAME} 不存在，跳过")
 
+    # 清理 preload.min.js 中的 MPlugins 补丁（修复白屏）
+    preload_path = os.path.join(os.path.dirname(build_dir), "preload.min.js")
+    if os.path.isfile(preload_path):
+        with open(preload_path, "rb") as f:
+            raw = f.read()
+        text = raw.decode("utf-8", errors="replace")
+        # 以 try{(function(){ 切分，移除含 mqttHelper/autosaveHelper 的段
+        marker = 'try{(function(){'
+        parts = text.split(marker)
+        cleaned = [parts[0]]
+        removed = 0
+        for seg in parts[1:]:
+            if 'mqttHelper' in seg or 'autosaveHelper' in seg:
+                removed += 1
+            else:
+                cleaned.append(marker + seg)
+        if removed > 0:
+            new_text = ''.join(cleaned).strip()
+            import re
+            new_text = re.sub(r'\n{3,}', '\n\n', new_text)
+            # 备份后写入
+            bak = preload_path + ".uninstall_bak"
+            shutil.copy2(preload_path, bak)
+            with open(preload_path, "w", encoding="utf-8") as f:
+                f.write(new_text)
+            print(f"  ✓ preload.min.js → 已清除 {removed} 个 MPlugins 补丁")
+            print(f"  [备份] {bak}")
+
     # 清除配置
     if os.path.isfile(CFG_FILE):
         try:
