@@ -859,6 +859,7 @@
 
       function injectMqttBlock(localIp, tryCount) {
         if (tryCount === undefined) tryCount = 0;
+        var injectAction = ''; // 'add'=新增 'update'=仅更新IP ''=无需变更
         try {
           // 1. 获取 workspace 和当前 XML
           var ws = api.getWorkspace();
@@ -887,6 +888,7 @@
                   if (field && field.textContent !== localIp) {
                     field.textContent = localIp;
                     needUpdate = true;
+                    injectAction = 'update';
                     api.log('注入: 更新 IP ' + localIp);
                   }
                 }
@@ -895,9 +897,11 @@
           } else {
             // 没有 MQTT 积木 → 新增
             needAdd = true;
+            injectAction = 'add';
           }
 
           if (!needUpdate && !needAdd) {
+            injectAction = '';
             api.log('注入: IP 已正确，无需修改');
             return;
           }
@@ -969,6 +973,7 @@
 
           // 验证 + 重试逻辑
           // tryCount 0=首次 1=自动重试 2=询问重试 3-4=继续询问 5=放弃
+          // injectAction 'add'=新增 'update'=仅更新IP ''=无需变更
           setTimeout(function() {
             try {
               var ws2 = api.getWorkspace();
@@ -976,7 +981,14 @@
               var xml2 = api.getXML(ws2);
               if (xml2 && xml2.indexOf('mqtt_common_setup') > -1) {
                 api.log('验证通过: MQTT 积木已加载');
-                if (tryCount >= 2) alert('注入成功！');
+                if (injectAction === 'add') {
+                  // 新增 MQTT → 始终弹窗
+                  alert('注入成功！\n已启动IoT服务器并自动注入模块至程序中');
+                } else if (injectAction === 'update' && tryCount >= 2) {
+                  // 更新 IP → 仅重试后弹窗（原有逻辑）
+                  alert('注入成功！');
+                }
+                // injectAction='' 或 update+首次成功 → 不弹窗
                 return;
               }
               // 未找到 → 需要重试
