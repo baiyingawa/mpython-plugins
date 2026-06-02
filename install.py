@@ -477,6 +477,19 @@ def main():
     print()
     print("  使用方法:")
     print("    1. 启动 mPython")
+
+    # 自动启动 mPython
+    mpython_exe = os.path.join(root, "mPython.exe")
+    mpython_alt = os.path.join(root, "mPython", "mPython.exe")
+    exe_path = mpython_exe if os.path.isfile(mpython_exe) else (mpython_alt if os.path.isfile(mpython_alt) else None)
+    if exe_path:
+        try:
+            subprocess.Popen([exe_path], shell=True)
+            print(f"  → 正在启动 mPython...")
+        except Exception as e:
+            print(f"  [!] 启动失败: {e}")
+    else:
+        print(f"  → 请手动启动 mPython")
     print("    2. 顶栏出现 MPlugins 插件栏（含自动保存功能）")
     print("    3. 点击 [浏览] 选择要保存的 .mxml 文件")
     print("    4. 点击 M 浮动按钮 → 面板 IoT 开关一键启动 MQTT")
