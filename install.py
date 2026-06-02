@@ -256,8 +256,9 @@ MOSQ_DIR    = os.path.join(MQTT_DIR, "mosquitto")
 MOSQ_BIN    = os.path.join(MOSQ_DIR, "bin")
 VENV_DIR    = os.path.join(MQTT_DIR, "venv")
 # Mosquitto 二进制压缩包（已预提取，不含安装器）
-# 来源：GitHub Release → 下载解压即用，无需管理员权限
-MOSQ_BIN_URL = "https://github.com/baiyingawa/mpython-plugins/releases/download/mosquitto-installer/mosquitto-bin.zip"
+# 来源：镜像站 → GitHub Release（部分地区 GitHub 无法访问）
+MOSQ_BIN_URL  = "http://uu233.online/mosquitto-bin.zip"
+MOSQ_BIN_MIRROR = "https://github.com/baiyingawa/mpython-plugins/releases/download/mosquitto-installer/mosquitto-bin.zip"
 
 
 def _download(url, dest):
@@ -294,8 +295,10 @@ def install_mosquitto():
     zip_path = os.path.join(MQTT_DIR, "mosquitto-bin.zip")
     if not os.path.isfile(zip_path):
         if not _download(MOSQ_BIN_URL, zip_path):
-            print("  ✗ 下载失败")
-            return False
+            print("  尝试 GitHub Release 下载...")
+            if not _download(MOSQ_BIN_MIRROR, zip_path):
+                print("  ✗ 下载失败")
+                return False
     # 解压到 bin 目录
     print("  解压中...")
     try:
