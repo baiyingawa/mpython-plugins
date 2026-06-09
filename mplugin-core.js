@@ -1282,6 +1282,46 @@
     } catch(e) { console.warn('[MPlugins] createPluginPanel:', e); }
   }
 
+  function beautify() {
+    // 1. 树标签缩短：微信小程序（掌控iot小程序）→ 掌控iot
+    try {
+      var _ob1 = new MutationObserver(function() {
+        var els = document.querySelectorAll('.blocklyTreeLabel');
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].textContent === '微信小程序（掌控iot小程序）') {
+            els[i].textContent = '掌控iot';
+            log('美化: 树标签已缩短');
+          }
+        }
+      });
+      _ob1.observe(document.body, { childList: true, subtree: true, characterData: true });
+      // 立即扫一遍
+      var els = document.querySelectorAll('.blocklyTreeLabel');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].textContent === '微信小程序（掌控iot小程序）') {
+          els[i].textContent = '掌控iot';
+        }
+      }
+    } catch(e) { err('美化(label):', e.message); }
+
+    // 2. 删除 graphArea 白色面板
+    try {
+      var _ob2 = new MutationObserver(function() {
+        var ga = document.querySelector('div.graphArea.white-D');
+        if (ga && ga.parentNode) {
+          ga.parentNode.removeChild(ga);
+          log('美化: graphArea 面板已删除');
+        }
+      });
+      _ob2.observe(document.body, { childList: true, subtree: true });
+      // 立即删除
+      var ga = document.querySelector('div.graphArea.white-D');
+      if (ga && ga.parentNode) {
+        ga.parentNode.removeChild(ga);
+      }
+    } catch(e) { err('美化(graphArea):', e.message); }
+  }
+
   function boot() {
     // 隐藏 mPython 自带助手（我们用自己创建的按钮）
     try {
@@ -1293,6 +1333,7 @@
     createBar();
     startAllModules();
     createPluginPanel();
+    beautify();
   }
 
   if (document.readyState === 'loading') {
