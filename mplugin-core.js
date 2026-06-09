@@ -1286,7 +1286,8 @@
     name: '界面美化',
 
     init: function(api) {
-      var _obs = []; // MutationObservers
+      var _obs = [];
+      var _gaStyle = null; // graphArea 的隐藏 style 元素
 
       function apply() {
         // 1. 树标签缩短
@@ -1301,7 +1302,6 @@
           });
           _ob1.observe(document.body, { childList: true, subtree: true, characterData: true });
           _obs.push(_ob1);
-          // 立即扫一遍
           var els = document.querySelectorAll('.blocklyTreeLabel');
           for (var i = 0; i < els.length; i++) {
             if (els[i].textContent === '微信小程序（掌控iot小程序）') {
@@ -1310,19 +1310,13 @@
           }
         } catch(e) { api.err('美化(label):', e.message); }
 
-        // 2. 删除 graphArea 白色面板
+        // 2. 隐藏 graphArea 白色面板（CSS 方式，便于即时还原）
         try {
-          var _ob2 = new MutationObserver(function() {
-            var ga = document.querySelector('div.graphArea.white-D');
-            if (ga && ga.parentNode) {
-              ga.parentNode.removeChild(ga);
-            }
-          });
-          _ob2.observe(document.body, { childList: true, subtree: true });
-          _obs.push(_ob2);
-          var ga = document.querySelector('div.graphArea.white-D');
-          if (ga && ga.parentNode) {
-            ga.parentNode.removeChild(ga);
+          if (!_gaStyle) {
+            _gaStyle = document.createElement('style');
+            _gaStyle.id = 'mplugin-beautify-grapharea';
+            _gaStyle.textContent = 'div.graphArea.white-D{display:none!important}';
+            document.head.appendChild(_gaStyle);
           }
         } catch(e) { api.err('美化(graphArea):', e.message); }
 
@@ -1330,12 +1324,31 @@
       }
 
       function clean() {
-        // 断开观察器（已做的修改保留到重启）
+        // 断开观察器
         for (var i = 0; i < _obs.length; i++) {
           try { _obs[i].disconnect(); } catch(e) {}
         }
         _obs = [];
-        api.log('界面美化已禁用（修改将在重启后还原）');
+
+        // 还原树标签
+        try {
+          var els = document.querySelectorAll('.blocklyTreeLabel');
+          for (var i = 0; i < els.length; i++) {
+            if (els[i].textContent === '掌控iot') {
+              els[i].textContent = '微信小程序（掌控iot小程序）';
+            }
+          }
+        } catch(e) { api.err('还原(label):', e.message); }
+
+        // 还原 graphArea（移除 CSS 隐藏）
+        try {
+          if (_gaStyle && _gaStyle.parentNode) {
+            _gaStyle.parentNode.removeChild(_gaStyle);
+            _gaStyle = null;
+          }
+        } catch(e) { api.err('还原(graphArea):', e.message); }
+
+        api.log('界面美化已禁用');
       }
 
       // 挂载 toggle
@@ -1350,7 +1363,7 @@
             modDef.enabled = true;
           }
         };
-        modDef.enabled = true;  // 默认开启
+        modDef.enabled = true;
       }
 
       apply();
