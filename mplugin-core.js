@@ -1377,19 +1377,52 @@
         api.log('控制台自动隐藏已禁用');
       }
 
+      function _showPromptDialog(title, defaultValue, callback) {
+        // Electron contextIsolation 下不支持 prompt()，用自制弹窗
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;';
+        var box = document.createElement('div');
+        box.style.cssText = 'background:#1a1a2e;border:1px solid #0f3460;border-radius:10px;padding:20px;min-width:300px;color:#e0e0e0;font-family:Segoe UI,sans-serif;';
+        box.innerHTML =
+          '<div style="margin-bottom:12px;font-size:14px;color:#e94560;">' + title + '</div>' +
+          '<input id="mplugin-prompt-input" type="number" style="width:100%;padding:8px;border:1px solid #0f3460;border-radius:6px;background:#0a0a1e;color:#fff;font-size:14px;box-sizing:border-box;" value="' + defaultValue + '">' +
+          '<div style="margin-top:12px;text-align:right;">' +
+            '<button id="mplugin-prompt-cancel" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-right:8px;">取消</button>' +
+            '<button id="mplugin-prompt-ok" style="background:#e94560;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;">确定</button>' +
+          '</div>';
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        var input = document.getElementById('mplugin-prompt-input');
+        if (input) { input.focus(); input.select(); }
+
+        document.getElementById('mplugin-prompt-ok').onclick = function() {
+          var val = input ? parseInt(input.value, 10) : defaultValue;
+          document.body.removeChild(overlay);
+          if (callback) callback(val);
+        };
+        document.getElementById('mplugin-prompt-cancel').onclick = function() {
+          document.body.removeChild(overlay);
+        };
+        // Enter 提交
+        if (input) input.onkeydown = function(e) {
+          if (e.key === 'Enter') { document.getElementById('mplugin-prompt-ok').click(); }
+          if (e.key === 'Escape') { document.getElementById('mplugin-prompt-cancel').click(); }
+        };
+      }
+
       function _promptTimeout() {
         var cur = _consoleHideTimeout;
         try { var s = localStorage.getItem('mplugin_console_hide_timeout'); if (s) cur = parseInt(s,10) || 10; } catch(e) {}
-        var input = prompt('控制台自动隐藏等待时间（秒，0=禁用）：', cur);
-        if (input !== null) {
-          _consoleHideTimeout = parseInt(input, 10) || 0;
+        _showPromptDialog('控制台自动隐藏等待时间（秒，0=禁用）', cur, function(val) {
+          _consoleHideTimeout = val;
           try {
             var bm = MP.get('beautify'); if (bm) bm._consoleTimeout = _consoleHideTimeout;
             localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
             localStorage.setItem('mplugin_console_hide_prompted', '1');
           } catch(e) {}
           if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
-        }
+        });
       }
 
       function apply() {
