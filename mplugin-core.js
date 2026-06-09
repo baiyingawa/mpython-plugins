@@ -1192,9 +1192,7 @@
             '</td>' +
           '</tr>' : '');
       rows += '<tr>' +
-        '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + 
-          (n === 'beautify' ? ' <span style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;" onclick="var m=MP.get(\'beautify\');if(m&amp;&amp;m._setConsoleTimeout)m._setConsoleTimeout()">[设置]</span>' : '') +
-        '</td>' +
+        '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + '</td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;"><span id="mplugin-panel-status-' + n + '" style="color:' + statusColor + ';font-size:12px;">' + statusText + '</span></td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;text-align:right;">' +
           '<div id="mplugin-panel-toggle-' + n + '" onclick="MP.toggleModule(\'' + n + '\')" style="display:inline-block;width:36px;height:20px;background:' + toggleBg + ';border-radius:10px;cursor:' + cursorStyle + ';transition:background 0.2s;position:relative;vertical-align:middle;">' +
@@ -1436,7 +1434,6 @@
         try {
           if (!_gaStyle) { _gaStyle = document.createElement('style'); _gaStyle.id = 'mplugin-beautify-grapharea'; _gaStyle.textContent = 'div.graphArea.white-D{display:none!important}'; document.head.appendChild(_gaStyle); }
         } catch(e) { api.err('美化(graphArea):', e.message); }
-        if (!localStorage.getItem('mplugin_console_hide_prompted')) { setTimeout(function() { _promptTimeout(); }, 3000); }
         api.log('界面美化已启用');
       }
 
