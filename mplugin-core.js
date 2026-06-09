@@ -1163,14 +1163,30 @@
       var toggleDot = isRunning ? 'right:3px' : 'left:3px';
       var cursorStyle = isBusy ? 'not-allowed' : 'pointer';
       // 忙碌时 onclick 仍在，但 MP.toggleModule 会通过 modDef.busy 拦截
+      var nameCell = (moduleDef.name || n);
       rows += '<tr>' +
-        '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + (moduleDef.name || n) + '</td>' +
+        '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + 
+          (n === 'beautify' ? ' <span id="mplugin-beautify-settings" style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;">[设置]</span>' : '') +
+        '</td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;"><span id="mplugin-panel-status-' + n + '" style="color:' + statusColor + ';font-size:12px;">' + statusText + '</span></td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;text-align:right;">' +
           '<div id="mplugin-panel-toggle-' + n + '" onclick="MP.toggleModule(\'' + n + '\')" style="display:inline-block;width:36px;height:20px;background:' + toggleBg + ';border-radius:10px;cursor:' + cursorStyle + ';transition:background 0.2s;position:relative;vertical-align:middle;">' +
             '<div style="position:absolute;top:2px;width:16px;height:16px;background:#fff;border-radius:50%;' + toggleDot + ';transition:left 0.2s,right 0.2s;"></div>' +
           '</div>' +
-        '</td></tr>';
+        '</td></tr>' +
+        // 美化子选项：控制台隐藏超时
+        var consoleTimeoutDisplay = '10';
+        try {
+          var bMod = MP.get('beautify');
+          if (bMod && bMod._consoleTimeout !== undefined) consoleTimeoutDisplay = bMod._consoleTimeout;
+          else { var s = localStorage.getItem('mplugin_console_hide_timeout'); if (s) consoleTimeoutDisplay = s; }
+        } catch(e) {}
+        (n === 'beautify' && isRunning ?
+          '<tr id="mplugin-beautify-subrow" style="background:rgba(255,255,255,0.03);">' +
+            '<td colspan="3" style="padding:4px 8px 8px 20px;color:#888;font-size:11px;">' +
+              '控制台自动隐藏：<span id="mplugin-console-timeout-display">' + consoleTimeoutDisplay + '</span>s' +
+            '</td>' +
+          '</tr>' : '');
     }
     return '<div style="position:relative;width:800px;padding:0;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 30px 10px 14px;border-bottom:1px solid #0f3460;">' +
@@ -1212,6 +1228,12 @@
     if (cb) cb.onclick = function() { _panelState.expanded = false; _panelEl.style.display = 'none'; };
     var db = document.getElementById('mplugin-diag-btn');
     if (db) db.onclick = function() { window.__mplugin_diag(); };
+    var sb = document.getElementById('mplugin-beautify-settings');
+    if (sb) sb.onclick = function() {
+      var mod = MP.get('beautify');
+      if (!mod || !mod._setConsoleTimeout) return;
+      mod._setConsoleTimeout();
+    };
   }
 
   /** 更新面板中某模块行的开关与状态文本 —— 已废弃，改用面板重建 */
@@ -1290,15 +1312,16 @@
       var _gaStyle = null;
       var _consoleTimer = null;
       var _consolePoll = null;
-      var _consoleHideTimeout = 10; // 秒，默认
+      var _consoleHideTimeout = 10;
 
       // ====== 控制台自动隐藏 / 展开 ======
       function setupConsoleAutoHide() {
         // 读取用户设置的超时
         try {
           var saved = localStorage.getItem('mplugin_console_hide_timeout');
-          if (saved) _consoleHideTimeout = parseInt(saved, 10) || 10;
+          if (saved) { _consoleHideTimeout = parseInt(saved, 10) || 10; }
         } catch(e) {}
+        try { var bm = MP.get('beautify'); if (bm) bm._consoleTimeout = _consoleHideTimeout; } catch(e) {}
 
         // 首次启用时延迟弹窗（不阻塞启动）
         if (!localStorage.getItem('mplugin_console_hide_prompted')) {
@@ -1307,6 +1330,8 @@
             if (input !== null) {
               _consoleHideTimeout = parseInt(input, 10) || 0;
               try {
+                var bm = MP.get('beautify');
+                if (bm) bm._consoleTimeout = _consoleHideTimeout;
                 localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
                 localStorage.setItem('mplugin_console_hide_prompted', '1');
               } catch(e) {}
@@ -1328,10 +1353,8 @@
             var dragBtn = document.querySelector('.drag-up');
             var consoleArea = dragBtn ? dragBtn.closest('[class*="serial"], [class*="Serial"], .el-drawer, [class*="console"], [class*="right-panel"]') || dragBtn.parentElement : null;
             if (!consoleArea) {
-              // 找不到容器，直接监听 drag-up 的父级往上几层
               consoleArea = dragBtn ? dragBtn.closest('div') : null;
               if (consoleArea) {
-                // 一直向上找带高度的容器
                 var p = consoleArea;
                 for (var i = 0; i < 10; i++) {
                   if (p.offsetHeight > 100 || !p.parentElement) break;
@@ -1344,19 +1367,32 @@
             api.log('控制台自动隐藏已启用 (' + _consoleHideTimeout + 's)');
 
             var _hideTimer = null;
+            var _manuallyCollapsed = false; // 是否用户手动收起
+
+            // 监听 drag-up 点击（手动收起）
+            document.addEventListener('click', function(e) {
+              var target = e.target;
+              if (target && (target.classList.contains('drag-up') || target.closest('.drag-up'))) {
+                _manuallyCollapsed = true;
+                api.log('控制台: 用户手动收起');
+              }
+            }, true); // capture phase 确保先触发
 
             function expand() {
+              if (_manuallyCollapsed) {
+                api.log('控制台: 用户手动收起的，跳过自动展开');
+                return;
+              }
               var btn = document.querySelector('.drag-unfold') || document.querySelector('.drag-up');
               if (btn) {
-                // 通过 Vue 的 click 事件展开
                 btn.click();
                 api.log('控制台: 自动展开');
               }
             }
 
             function collapse() {
+              _manuallyCollapsed = false;
               var btn = document.querySelector('.drag-up');
-              // drag-up 存在说明是展开状态，可以收起
               var unfoldBtn = document.querySelector('.drag-unfold');
               if (btn && !unfoldBtn) {
                 btn.click();
@@ -1366,6 +1402,7 @@
 
             // 鼠标进入/离开
             consoleArea.addEventListener('mouseenter', function() {
+              _manuallyCollapsed = false;
               if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
             });
             consoleArea.addEventListener('mouseleave', function() {
@@ -1487,6 +1524,22 @@
             modDef.enabled = true;
           }
         };
+        modDef._setConsoleTimeout = function() {
+          var cur = _consoleHideTimeout;
+          try { var s = localStorage.getItem('mplugin_console_hide_timeout'); if (s) cur = parseInt(s,10) || 10; } catch(e) {}
+          var input = prompt('控制台自动隐藏等待时间（秒，0=禁用）：', cur);
+          if (input !== null) {
+            _consoleHideTimeout = parseInt(input, 10) || 0;
+            modDef._consoleTimeout = _consoleHideTimeout;
+            try {
+              localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
+              localStorage.setItem('mplugin_console_hide_prompted', '1');
+            } catch(e) {}
+            // 刷新面板
+            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+          }
+        };
+        modDef._consoleTimeout = _consoleHideTimeout;
         modDef.enabled = true;
       }
 
