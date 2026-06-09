@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MPlugins for mPython v1.60 — 卸载脚本
+MPlugins for mPython v1.70 — 卸载脚本
 ======================================
 还原 index.html，删除 mplugin-core.js，清除已保存的 mPython 位置配置。
 """
@@ -69,7 +69,7 @@ def find_mpython(saved_root=None):
 
 def main():
     print("=" * 56)
-    print("  MPlugins for mPython v1.60  卸载程序")
+    print("  MPlugins for mPython v1.70  卸载程序")
     print("=" * 56)
     print()
 
