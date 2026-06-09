@@ -1282,48 +1282,83 @@
     } catch(e) { console.warn('[MPlugins] createPluginPanel:', e); }
   }
 
-  function beautify() {
-    // 1. 树标签缩短：微信小程序（掌控iot小程序）→ 掌控iot
-    try {
-      var _ob1 = new MutationObserver(function() {
-        var els = document.querySelectorAll('.blocklyTreeLabel');
-        for (var i = 0; i < els.length; i++) {
-          if (els[i].textContent === '微信小程序（掌控iot小程序）') {
-            els[i].textContent = '掌控iot';
-            log('美化: 树标签已缩短');
-          }
-        }
-      });
-      _ob1.observe(document.body, { childList: true, subtree: true, characterData: true });
-      // 立即扫一遍
-      var els = document.querySelectorAll('.blocklyTreeLabel');
-      for (var i = 0; i < els.length; i++) {
-        if (els[i].textContent === '微信小程序（掌控iot小程序）') {
-          els[i].textContent = '掌控iot';
-        }
-      }
-    } catch(e) { err('美化(label):', e.message); }
+  MP.register('beautify', {
+    name: '界面美化',
 
-    // 2. 删除 graphArea 白色面板
-    try {
-      var _ob2 = new MutationObserver(function() {
-        var ga = document.querySelector('div.graphArea.white-D');
-        if (ga && ga.parentNode) {
-          ga.parentNode.removeChild(ga);
-          log('美化: graphArea 面板已删除');
-        }
-      });
-      _ob2.observe(document.body, { childList: true, subtree: true });
-      // 立即删除
-      var ga = document.querySelector('div.graphArea.white-D');
-      if (ga && ga.parentNode) {
-        ga.parentNode.removeChild(ga);
+    init: function(api) {
+      var _obs = []; // MutationObservers
+
+      function apply() {
+        // 1. 树标签缩短
+        try {
+          var _ob1 = new MutationObserver(function() {
+            var els = document.querySelectorAll('.blocklyTreeLabel');
+            for (var i = 0; i < els.length; i++) {
+              if (els[i].textContent === '微信小程序（掌控iot小程序）') {
+                els[i].textContent = '掌控iot';
+              }
+            }
+          });
+          _ob1.observe(document.body, { childList: true, subtree: true, characterData: true });
+          _obs.push(_ob1);
+          // 立即扫一遍
+          var els = document.querySelectorAll('.blocklyTreeLabel');
+          for (var i = 0; i < els.length; i++) {
+            if (els[i].textContent === '微信小程序（掌控iot小程序）') {
+              els[i].textContent = '掌控iot';
+            }
+          }
+        } catch(e) { api.err('美化(label):', e.message); }
+
+        // 2. 删除 graphArea 白色面板
+        try {
+          var _ob2 = new MutationObserver(function() {
+            var ga = document.querySelector('div.graphArea.white-D');
+            if (ga && ga.parentNode) {
+              ga.parentNode.removeChild(ga);
+            }
+          });
+          _ob2.observe(document.body, { childList: true, subtree: true });
+          _obs.push(_ob2);
+          var ga = document.querySelector('div.graphArea.white-D');
+          if (ga && ga.parentNode) {
+            ga.parentNode.removeChild(ga);
+          }
+        } catch(e) { api.err('美化(graphArea):', e.message); }
+
+        api.log('界面美化已启用');
       }
-    } catch(e) { err('美化(graphArea):', e.message); }
-  }
+
+      function clean() {
+        // 断开观察器（已做的修改保留到重启）
+        for (var i = 0; i < _obs.length; i++) {
+          try { _obs[i].disconnect(); } catch(e) {}
+        }
+        _obs = [];
+        api.log('界面美化已禁用（修改将在重启后还原）');
+      }
+
+      // 挂载 toggle
+      var modDef = MP.get('beautify');
+      if (modDef) {
+        modDef.toggle = function() {
+          if (modDef.enabled) {
+            clean();
+            modDef.enabled = false;
+          } else {
+            apply();
+            modDef.enabled = true;
+          }
+        };
+        modDef.enabled = true;  // 默认开启
+      }
+
+      apply();
+    }
+  });
 
   function boot() {
-    // 隐藏 mPython 自带助手（我们用自己创建的按钮）
+    // 隐藏 mPython 自带助手
     try {
       var s = document.createElement('style');
       s.id = 'mplugin-assist-style';
@@ -1333,7 +1368,6 @@
     createBar();
     startAllModules();
     createPluginPanel();
-    beautify();
   }
 
   if (document.readyState === 'loading') {
