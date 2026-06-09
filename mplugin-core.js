@@ -1181,19 +1181,19 @@
             '<td style="padding:4px 8px 4px 20px;color:#888;font-size:11px;">控制台自动隐藏与显示</td>' +
             '<td style="padding:4px 8px;font-size:11px;"><span style="color:' + (consoleAutoHideOn ? '#4caf50' : '#888') + ';">' + subStatus + '</span></td>' +
             '<td style="padding:4px 8px;text-align:right;">' +
-              '<div id="mplugin-console-auto-toggle" style="display:inline-block;width:28px;height:16px;background:' + subBg + ';border-radius:8px;cursor:pointer;transition:background 0.2s;position:relative;vertical-align:middle;">' +
+              '<div style="display:inline-block;width:28px;height:16px;background:' + subBg + ';border-radius:8px;cursor:pointer;transition:background 0.2s;position:relative;vertical-align:middle;" onclick="var m=MP.get(\'beautify\');if(m){m._consoleAutoHide=m._consoleAutoHide!==true;if(m._consoleAutoHide){if(typeof m._startAutoHide===\'function\')m._startAutoHide()}else{if(typeof m._stopAutoHide===\'function\')m._stopAutoHide()}var p=document.getElementById(\'mplugin-panel\');if(p){p.innerHTML=MP._buildPanelHTML();MP._bindPanelHandlers()}}">' +
                 '<div style="position:absolute;top:2px;width:12px;height:12px;background:#fff;border-radius:50%;' + subDot + ';transition:left 0.2s,right 0.2s;"></div>' +
               '</div>' +
             '</td></tr>' +
           '<tr style="background:rgba(255,255,255,0.03);">' +
             '<td colspan="3" style="padding:0 8px 6px 20px;color:#666;font-size:10px;">' +
               '等待时间：<span id="mplugin-console-timeout-display">' + consoleTimeoutDisplay + '</span>s' +
-              ' <span id="mplugin-beautify-timeout-settings" style="color:#ff9800;cursor:pointer;text-decoration:underline;">[更改]</span>' +
+              ' <span style="color:#ff9800;cursor:pointer;text-decoration:underline;" onclick="var m=MP.get(\'beautify\');if(m&amp;&amp;m._setConsoleTimeout)m._setConsoleTimeout()">[更改]</span>' +
             '</td>' +
           '</tr>' : '');
       rows += '<tr>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + 
-          (n === 'beautify' ? ' <span id="mplugin-beautify-settings" style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;">[设置]</span>' : '') +
+          (n === 'beautify' ? ' <span style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;" onclick="var m=MP.get(\'beautify\');if(m&amp;&amp;m._setConsoleTimeout)m._setConsoleTimeout()">[设置]</span>' : '') +
         '</td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;"><span id="mplugin-panel-status-' + n + '" style="color:' + statusColor + ';font-size:12px;">' + statusText + '</span></td>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;text-align:right;">' +
@@ -1242,30 +1242,6 @@
     if (cb) cb.onclick = function() { _panelState.expanded = false; _panelEl.style.display = 'none'; };
     var db = document.getElementById('mplugin-diag-btn');
     if (db) db.onclick = function() { window.__mplugin_diag(); };
-    var sb = document.getElementById('mplugin-beautify-settings');
-    if (sb) sb.onclick = function() {
-      var mod = MP.get('beautify');
-      if (!mod || !mod._setConsoleTimeout) return;
-      mod._setConsoleTimeout();
-    };
-    var tb = document.getElementById('mplugin-beautify-timeout-settings');
-    if (tb) tb.onclick = function() {
-      var mod = MP.get('beautify');
-      if (!mod || !mod._setConsoleTimeout) return;
-      mod._setConsoleTimeout();
-    };
-    var ct = document.getElementById('mplugin-console-auto-toggle');
-    if (ct) ct.onclick = function() {
-      var mod = MP.get('beautify');
-      if (!mod) return;
-      mod._consoleAutoHide = mod._consoleAutoHide !== true;
-      if (mod._consoleAutoHide) {
-        if (typeof mod._startAutoHide === 'function') mod._startAutoHide();
-      } else {
-        if (typeof mod._stopAutoHide === 'function') mod._stopAutoHide();
-      }
-      if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
-    };
   }
 
   /** 更新面板中某模块行的开关与状态文本 —— 已废弃，改用面板重建 */
@@ -1322,6 +1298,9 @@
       document.body.appendChild(panel);
 
       bindPanelHandlers();
+      // 暴露给内联 onclick
+      MP._buildPanelHTML = buildPanelHTML;
+      MP._bindPanelHandlers = bindPanelHandlers;
 
       // 点击浮动按钮 Toggle
       btn.onclick = function() {
