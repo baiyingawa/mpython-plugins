@@ -1287,8 +1287,125 @@
 
     init: function(api) {
       var _obs = [];
-      var _gaStyle = null; // graphArea 的隐藏 style 元素
+      var _gaStyle = null;
+      var _consoleTimer = null;
+      var _consolePoll = null;
+      var _consoleHideTimeout = 10; // 秒，默认
 
+      // ====== 控制台自动隐藏 / 展开 ======
+      function setupConsoleAutoHide() {
+        // 读取用户设置的超时
+        try {
+          var saved = localStorage.getItem('mplugin_console_hide_timeout');
+          if (saved) _consoleHideTimeout = parseInt(saved, 10) || 10;
+        } catch(e) {}
+        // 首次启用时弹窗设置
+        if (!localStorage.getItem('mplugin_console_hide_set')) {
+          var input = prompt('控制台自动隐藏等待时间（秒，0=禁用）：', _consoleHideTimeout);
+          if (input !== null) {
+            _consoleHideTimeout = parseInt(input, 10) || 0;
+            try {
+              localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
+              localStorage.setItem('mplugin_console_hide_set', '1');
+            } catch(e) {}
+          }
+        }
+
+        if (_consoleHideTimeout <= 0) {
+          api.log('控制台自动隐藏已禁用(超时=0)');
+          return;
+        }
+
+        // 延迟等 DOM 渲染
+        setTimeout(function() {
+          try {
+            var dragBtn = document.querySelector('.drag-up');
+            var consoleArea = dragBtn ? dragBtn.closest('[class*="serial"], [class*="Serial"], .el-drawer, [class*="console"], [class*="right-panel"]') || dragBtn.parentElement : null;
+            if (!consoleArea) {
+              // 找不到容器，直接监听 drag-up 的父级往上几层
+              consoleArea = dragBtn ? dragBtn.closest('div') : null;
+              if (consoleArea) {
+                // 一直向上找带高度的容器
+                var p = consoleArea;
+                for (var i = 0; i < 10; i++) {
+                  if (p.offsetHeight > 100 || !p.parentElement) break;
+                  p = p.parentElement;
+                }
+                consoleArea = p;
+              }
+            }
+            if (!consoleArea) { api.warn('控制台: 未找到 drag-up 容器'); return; }
+            api.log('控制台自动隐藏已启用 (' + _consoleHideTimeout + 's)');
+
+            var _hideTimer = null;
+
+            function expand() {
+              var btn = document.querySelector('.drag-unfold') || document.querySelector('.drag-up');
+              if (btn) {
+                // 通过 Vue 的 click 事件展开
+                btn.click();
+                api.log('控制台: 自动展开');
+              }
+            }
+
+            function collapse() {
+              var btn = document.querySelector('.drag-up');
+              // drag-up 存在说明是展开状态，可以收起
+              var unfoldBtn = document.querySelector('.drag-unfold');
+              if (btn && !unfoldBtn) {
+                btn.click();
+                api.log('控制台: 自动收起 (' + _consoleHideTimeout + 's 无操作)');
+              }
+            }
+
+            // 鼠标进入/离开
+            consoleArea.addEventListener('mouseenter', function() {
+              if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+            });
+            consoleArea.addEventListener('mouseleave', function() {
+              if (_hideTimer) clearTimeout(_hideTimer);
+              _hideTimer = setTimeout(collapse, _consoleHideTimeout * 1000);
+            });
+
+            // 新内容自动展开
+            setupConsoleAutoExpand(expand);
+          } catch(e) { api.err('控制台自动隐藏:', e.message); }
+        }, 2000);
+      }
+
+      function setupConsoleAutoExpand(expandFn) {
+        // 轮询 xterm buffer，有新内容就展开
+        _consolePoll = setInterval(function() {
+          try {
+            if (!window.vm || !window.vm.$store || !window.vm.$store.state) return;
+            var term = window.vm.$store.state.term;
+            if (!term) return;
+            var bufLen = term.buffer.active.length;
+            var found = false;
+            for (var i = 0; i < bufLen; i++) {
+              var ln = term.buffer.active.getLine(i);
+              if (ln) {
+                var txt = ln.translateToString().trim();
+                if (txt) { found = true; break; }
+              }
+            }
+            if (found === false) return;
+            // 检查是否已展开（drag-unfold 存在说明已收起）
+            var isCollapsed = document.querySelector('.drag-unfold');
+            if (isCollapsed) {
+              expandFn();
+            }
+          } catch(e) {}
+        }, 800);
+      }
+
+      function stopConsoleAutoHide() {
+        if (_consoleTimer) { clearTimeout(_consoleTimer); _consoleTimer = null; }
+        if (_consolePoll) { clearInterval(_consolePoll); _consolePoll = null; }
+        api.log('控制台自动隐藏已停止');
+      }
+
+      // ====== 美化主逻辑 ======
       function apply() {
         // 1. 树标签缩短
         try {
@@ -1310,7 +1427,7 @@
           }
         } catch(e) { api.err('美化(label):', e.message); }
 
-        // 2. 隐藏 graphArea 白色面板（CSS 方式，便于即时还原）
+        // 2. 隐藏 graphArea 白色面板
         try {
           if (!_gaStyle) {
             _gaStyle = document.createElement('style');
@@ -1320,17 +1437,18 @@
           }
         } catch(e) { api.err('美化(graphArea):', e.message); }
 
+        // 3. 控制台自动隐藏/展开
+        setupConsoleAutoHide();
+
         api.log('界面美化已启用');
       }
 
       function clean() {
-        // 断开观察器
         for (var i = 0; i < _obs.length; i++) {
           try { _obs[i].disconnect(); } catch(e) {}
         }
         _obs = [];
 
-        // 还原树标签
         try {
           var els = document.querySelectorAll('.blocklyTreeLabel');
           for (var i = 0; i < els.length; i++) {
@@ -1340,7 +1458,6 @@
           }
         } catch(e) { api.err('还原(label):', e.message); }
 
-        // 还原 graphArea（移除 CSS 隐藏）
         try {
           if (_gaStyle && _gaStyle.parentNode) {
             _gaStyle.parentNode.removeChild(_gaStyle);
@@ -1348,6 +1465,7 @@
           }
         } catch(e) { api.err('还原(graphArea):', e.message); }
 
+        stopConsoleAutoHide();
         api.log('界面美化已禁用');
       }
 
@@ -1370,6 +1488,116 @@
     }
   });
 
+  // === 终端控制台读取测试 ===
+  function testXtermRead() {
+    setTimeout(function() {
+      // 法1: 从 Vuex store 找 term/PIP_Term（已知 mPython 用 setTerm/setPIP_Term）
+      var term = null;
+      try {
+        if (window.vm && window.vm.$store) {
+          var state = window.vm.$store.state;
+          log('store keys: ' + Object.keys(state).slice(0, 20).join(', '));
+          if (state.term) {
+            term = state.term;
+            log('xterm: 从 store.state.term 找到实例');
+          } else if (state.PIP_Term) {
+            term = state.PIP_Term;
+            log('xterm: 从 store.state.PIP_Term 找到实例');
+          }
+        }
+      } catch(e) {}
+
+      if (!term) {
+        // 法2: 用 querySelector 在 DOM 中找挂载点，然后读它的 __vue__ 属性
+        try {
+          var screenEl = document.querySelector('.xterm-screen');
+          if (screenEl) {
+            var vue = screenEl.__vue__ || screenEl.__vueParentComponent;
+            if (vue) log('xterm vue: ' + (vue.term ? '有term' : vue.$options ? '有options' : '其他'));
+            // 逐层探查属性
+            for (var k in screenEl) {
+              if (k.indexOf('__vue') === 0 || k.indexOf('_xterm') === 0 || k.indexOf('term') === 0) {
+                log('  screenEl.' + k + ' = ' + typeof screenEl[k]);
+              }
+            }
+          }
+          // 法3: 检查 window 全局变量
+          for (var g in window) {
+            if (g.indexOf('Terminal') >= 0 || g.indexOf('terminal') >= 0 || g.indexOf('xterm') >= 0) {
+              log('window.' + g + ' = ' + typeof window[g]);
+            }
+          }
+          // 法4: 检查 mainJs 暴露的变量
+          if (window.vm && window.vm.$store) {
+            var state = window.vm.$store.state;
+            log('store state keys: ' + Object.keys(state).join(', '));
+            for (var k in state) {
+              if (state[k] && typeof state[k] === 'object') {
+                var keys = Object.keys(state[k]);
+                if (keys.some(function(x) { return x.indexOf('term') >= 0 || x.indexOf('serial') >= 0 || x.indexOf('console') >= 0; })) {
+                  log('  state.' + k + ' keys: ' + keys.join(', '));
+                }
+              }
+            }
+          }
+        } catch(e) { log('xterm 深入探测错误: ' + e.message); }
+      }
+
+      if (term && typeof term.buffer === 'object') {
+        log('xterm: 找到 Terminal 实例');
+        try {
+          var lineCount = term.buffer.active.length;
+          log('xterm: ' + lineCount + ' 行缓存');
+          for (var i = Math.max(0, lineCount - 5); i < lineCount; i++) {
+            var line = term.buffer.active.getLine(i);
+            if (line) {
+              var txt = line.translateToString().trim();
+              if (txt) log('xterm 行 ' + i + ': ' + txt.substring(0, 80));
+            }
+          }
+        } catch(e) { log('xterm buffer 读取出错: ' + e.message); }
+
+        // 监听新行：轮询 buffer，每次有新内容就输出
+        // 注：onLineFeed/onData 不可靠，buffer 长度可能不变（终端可能原地改写）
+        log('xterm: 启动轮询监控 (500ms)');
+        var pollCache = '';
+        setInterval(function() {
+          try {
+            var bufLen = term.buffer.active.length;
+            var changed = false;
+            for (var i = 0; i < bufLen; i++) {
+              var ln = term.buffer.active.getLine(i);
+              if (ln) {
+                var txt = ln.translateToString();
+                if (txt) {
+                  // 用简单缓存比较检测变化
+                  var key = i + ':' + txt;
+                  if (pollCache.indexOf(key) < 0) {
+                    pollCache += key + '|';
+                    if (pollCache.length > 5000) pollCache = pollCache.slice(-3000);
+                    var trimmed = txt.trim();
+                    if (trimmed) log('xterm 新行: ' + trimmed.substring(0, 100));
+                    changed = true;
+                  }
+                }
+              }
+            }
+            // 清理缓存防爆
+            if (pollCache.length > 10000) pollCache = pollCache.slice(-5000);
+          } catch(e) {}
+        }, 500);
+      } else {
+        log('xterm: 未找到 Terminal 实例');
+        // 列出所有含 xterm 的元素
+        var all = document.querySelectorAll('[class*="xterm"]');
+        log('xterm: 含 xterm class 的元素: ' + all.length);
+        for (var i = 0; i < Math.min(all.length, 5); i++) {
+          log('  - ' + (all[i].className || all[i].id || all[i].tagName));
+        }
+      }
+    }, 3000);
+  }
+
   function boot() {
     // 隐藏 mPython 自带助手
     try {
@@ -1381,6 +1609,7 @@
     createBar();
     startAllModules();
     createPluginPanel();
+    testXtermRead();
   }
 
   if (document.readyState === 'loading') {
