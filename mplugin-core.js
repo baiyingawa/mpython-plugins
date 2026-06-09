@@ -1192,7 +1192,6 @@
             '</td>' +
           '</tr>' : '');
       rows += '<tr>' +
-      rows += '<tr>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + 
           (n === 'beautify' ? ' <span id="mplugin-beautify-settings" style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;">[设置]</span>' : '') +
         '</td>' +
