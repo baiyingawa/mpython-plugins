@@ -1164,6 +1164,19 @@
       var cursorStyle = isBusy ? 'not-allowed' : 'pointer';
       // 忙碌时 onclick 仍在，但 MP.toggleModule 会通过 modDef.busy 拦截
       var nameCell = (moduleDef.name || n);
+      // 美化子选项值
+      var consoleTimeoutDisplay = '10';
+      try {
+        var bMod = MP.get('beautify');
+        if (bMod && bMod._consoleTimeout !== undefined) consoleTimeoutDisplay = bMod._consoleTimeout;
+        else { var st = localStorage.getItem('mplugin_console_hide_timeout'); if (st) consoleTimeoutDisplay = st; }
+      } catch(e) {}
+      var beautifySubRow = (n === 'beautify' && isRunning ?
+          '<tr id="mplugin-beautify-subrow" style="background:rgba(255,255,255,0.03);">' +
+            '<td colspan="3" style="padding:4px 8px 8px 20px;color:#888;font-size:11px;">' +
+              '控制台自动隐藏：<span id="mplugin-console-timeout-display">' + consoleTimeoutDisplay + '</span>s' +
+            '</td>' +
+          '</tr>' : '');
       rows += '<tr>' +
         '<td style="padding:8px;border-bottom:1px solid #0a0a1e;color:#b0b0b0;font-size:13px;">' + nameCell + 
           (n === 'beautify' ? ' <span id="mplugin-beautify-settings" style="color:#ff9800;font-size:11px;cursor:pointer;text-decoration:underline;">[设置]</span>' : '') +
@@ -1173,20 +1186,7 @@
           '<div id="mplugin-panel-toggle-' + n + '" onclick="MP.toggleModule(\'' + n + '\')" style="display:inline-block;width:36px;height:20px;background:' + toggleBg + ';border-radius:10px;cursor:' + cursorStyle + ';transition:background 0.2s;position:relative;vertical-align:middle;">' +
             '<div style="position:absolute;top:2px;width:16px;height:16px;background:#fff;border-radius:50%;' + toggleDot + ';transition:left 0.2s,right 0.2s;"></div>' +
           '</div>' +
-        '</td></tr>' +
-        // 美化子选项：控制台隐藏超时
-        var consoleTimeoutDisplay = '10';
-        try {
-          var bMod = MP.get('beautify');
-          if (bMod && bMod._consoleTimeout !== undefined) consoleTimeoutDisplay = bMod._consoleTimeout;
-          else { var s = localStorage.getItem('mplugin_console_hide_timeout'); if (s) consoleTimeoutDisplay = s; }
-        } catch(e) {}
-        (n === 'beautify' && isRunning ?
-          '<tr id="mplugin-beautify-subrow" style="background:rgba(255,255,255,0.03);">' +
-            '<td colspan="3" style="padding:4px 8px 8px 20px;color:#888;font-size:11px;">' +
-              '控制台自动隐藏：<span id="mplugin-console-timeout-display">' + consoleTimeoutDisplay + '</span>s' +
-            '</td>' +
-          '</tr>' : '');
+        '</td></tr>' + beautifySubRow;
     }
     return '<div style="position:relative;width:800px;padding:0;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 30px 10px 14px;border-bottom:1px solid #0f3460;">' +
