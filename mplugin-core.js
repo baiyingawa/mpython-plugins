@@ -1299,16 +1299,22 @@
           var saved = localStorage.getItem('mplugin_console_hide_timeout');
           if (saved) _consoleHideTimeout = parseInt(saved, 10) || 10;
         } catch(e) {}
-        // 首次启用时弹窗设置
-        if (!localStorage.getItem('mplugin_console_hide_set')) {
-          var input = prompt('控制台自动隐藏等待时间（秒，0=禁用）：', _consoleHideTimeout);
-          if (input !== null) {
-            _consoleHideTimeout = parseInt(input, 10) || 0;
-            try {
-              localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
-              localStorage.setItem('mplugin_console_hide_set', '1');
-            } catch(e) {}
-          }
+
+        // 首次启用时延迟弹窗（不阻塞启动）
+        if (!localStorage.getItem('mplugin_console_hide_prompted')) {
+          setTimeout(function() {
+            var input = prompt('控制台自动隐藏等待时间（秒，0=禁用）：', _consoleHideTimeout);
+            if (input !== null) {
+              _consoleHideTimeout = parseInt(input, 10) || 0;
+              try {
+                localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
+                localStorage.setItem('mplugin_console_hide_prompted', '1');
+              } catch(e) {}
+            } else {
+              // 用户取消，标记为已提示过，用默认值
+              try { localStorage.setItem('mplugin_console_hide_prompted', '1'); } catch(e) {}
+            }
+          }, 3000);
         }
 
         if (_consoleHideTimeout <= 0) {
