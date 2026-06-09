@@ -1188,7 +1188,7 @@
           '<tr style="background:rgba(255,255,255,0.03);">' +
             '<td colspan="3" style="padding:0 8px 6px 20px;color:#666;font-size:10px;">' +
               '等待时间：<span id="mplugin-console-timeout-display">' + consoleTimeoutDisplay + '</span>s' +
-              ' <span id="mplugin-beautify-settings" style="color:#ff9800;cursor:pointer;text-decoration:underline;">[更改]</span>' +
+              ' <span id="mplugin-beautify-timeout-settings" style="color:#ff9800;cursor:pointer;text-decoration:underline;">[更改]</span>' +
             '</td>' +
           '</tr>' : '');
       rows += '<tr>' +
@@ -1244,6 +1244,12 @@
     if (db) db.onclick = function() { window.__mplugin_diag(); };
     var sb = document.getElementById('mplugin-beautify-settings');
     if (sb) sb.onclick = function() {
+      var mod = MP.get('beautify');
+      if (!mod || !mod._setConsoleTimeout) return;
+      mod._setConsoleTimeout();
+    };
+    var tb = document.getElementById('mplugin-beautify-timeout-settings');
+    if (tb) tb.onclick = function() {
       var mod = MP.get('beautify');
       if (!mod || !mod._setConsoleTimeout) return;
       mod._setConsoleTimeout();
@@ -1315,12 +1321,7 @@
       _panelEl = panel;
       document.body.appendChild(panel);
 
-      // 关闭按钮事件
-      var cb = document.getElementById('mplugin-panel-close');
-      if (cb) cb.onclick = function() { _panelState.expanded = false; panel.style.display = 'none'; };
-      // 诊断按钮事件
-      var db = document.getElementById('mplugin-diag-btn');
-      if (db) db.onclick = function() { window.__mplugin_diag(); };
+      bindPanelHandlers();
 
       // 点击浮动按钮 Toggle
       btn.onclick = function() {
