@@ -16,7 +16,7 @@ VERSION_FILE = os.path.join(PACKAGE_DIR, "version.txt")
 CFG_FILE     = os.path.join(os.path.expanduser("~"), ".mpython_autosave", "mpython_cfg.json")
 LIVE_SOURCE  = r"D:\APP DATA\mPython\resources\app\build\mplugin-core.js"
 
-FILES_TO_PACK = ["mplugin-core.js", "install.py", "uninstall.py", "README.md"]
+FILES_TO_PACK = ["mplugin-core.js", "install.py", "uninstall.py", "README.md", "write_settings.py"]
 MQTT_DIR      = os.path.join(PACKAGE_DIR, "mqtt")
 
 

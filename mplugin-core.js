@@ -1324,38 +1324,61 @@
       function _getSettingsPath() {
         try {
           var href = window.location.href;
-          var appDir = decodeURIComponent(href.replace('file:///', '').replace(/\/[^\/]+$/, ''));
-          return appDir + '/build/setting.json';
+          // file:///D:/path/to/app/index.html → D:/path/to/app
+          var match = href.match(/^file:\/\/\/(.+?)\/[^\/]+\.html$/);
+          if (match) {
+            var decoded = decodeURIComponent(match[1]);
+            return decoded + '/build/setting.json';
+          }
+          // 备用: 直接用 mplugin-core.js 的路径推断
+          if (document.currentScript && document.currentScript.src) {
+            var src = document.currentScript.src.replace(/^file:\/\//, '');
+            var dir = decodeURIComponent(src).replace(/\/[^\/]+$/, '');
+            return dir + '/setting.json';
+          }
+          return null;
         } catch(e) { return null; }
       }
       function _saveSettings() {
         var p = _getSettingsPath();
-        if (!p || !window.mqttHelper) return;
+        api.log('设置: 保存到 ' + p);
+        if (!p || !window.mqttHelper) { api.warn('设置: 无法保存'); return; }
         var data = JSON.stringify({
           console_hide_timeout: _consoleHideTimeout,
           console_auto_hide: MP.get('beautify') ? (MP.get('beautify')._consoleAutoHide === true) : false
         });
-        // 用 node -e 写入 JSON，JSON.stringify 做转义保证安全
-        var cmd = 'node -e ' + JSON.stringify(
-          'require("fs").writeFileSync(' + JSON.stringify(p) + ', ' + JSON.stringify(data) + ', "utf8")'
-        );
-        window.mqttHelper.exec(cmd).catch(function(){});
+        // 用 write_settings.py helper 脚本（位于 build 目录）
+        var pythonExe = 'python';
+        var scriptDir = _getSettingsPath().replace(/\/[^\/]+$/, '');
+        var scriptPath = scriptDir + '/write_settings.py';
+        var cmd = pythonExe + ' ' + JSON.stringify(scriptPath) + ' write ' + JSON.stringify(p) + ' ' + JSON.stringify(data);
+        window.mqttHelper.exec(cmd)
+          .then(function() { api.log('设置: 已保存'); })
+          .catch(function(e) { api.err('设置: 写入失败: ' + (e.message || e)); });
       }
       function _loadSettings(callback) {
         var p = _getSettingsPath();
-        if (!p || !window.mqttHelper) { if (callback) callback(); return; }
-        var cmd = 'node -e ' + JSON.stringify(
-          'var p=' + JSON.stringify(p) + ';try{console.log(require("fs").readFileSync(p,"utf8"))}catch(e){console.log("{}")}'
-        );
-        window.mqttHelper.exec(cmd).then(function(output) {
-          try {
-            var d = JSON.parse(output);
-            if (typeof d.console_hide_timeout === 'number') _consoleHideTimeout = d.console_hide_timeout;
-            var mod = MP.get('beautify');
-            if (mod) mod._consoleAutoHide = d.console_auto_hide === true;
-          } catch(e) {}
-          if (callback) callback();
-        }).catch(function() { if (callback) callback(); });
+        api.log('设置: 从 ' + p + ' 加载');
+        if (!p || !window.mqttHelper) { api.warn('设置: 无法加载'); if (callback) callback(); return; }
+        var pythonExe = 'python';
+        var scriptDir = _getSettingsPath().replace(/\/[^\/]+$/, '');
+        var scriptPath = scriptDir + '/write_settings.py';
+        var cmd = pythonExe + ' ' + JSON.stringify(scriptPath) + ' read ' + JSON.stringify(p);
+        window.mqttHelper.exec(cmd)
+          .then(function(output) {
+            try {
+              var d = JSON.parse(output.trim());
+              if (typeof d.console_hide_timeout === 'number') _consoleHideTimeout = d.console_hide_timeout;
+              var mod = MP.get('beautify');
+              if (mod) mod._consoleAutoHide = d.console_auto_hide === true;
+              api.log('设置: 加载成功 timeout=' + _consoleHideTimeout + ' autoHide=' + (mod ? mod._consoleAutoHide : '?'));
+            } catch(e) { api.warn('设置: 解析失败: ' + e.message); }
+            if (callback) callback();
+          })
+          .catch(function(e) {
+            api.warn('设置: 读取失败(首次或无文件): ' + (e.message || e).substring(0, 80));
+            if (callback) callback();
+          });
       }
 
       function _startAutoHide() {

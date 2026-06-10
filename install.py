@@ -166,15 +166,41 @@ def copy_plugin_files(build_dir):
         dst_hash = file_hash(dst)
         if src_hash == dst_hash:
             print(f"  [跳过] {SCRIPT_NAME} 哈希一致，无需更新")
-            return True
-        print(f"  [哈希] {SCRIPT_NAME} 不一致，更新...")
-    try:
-        shutil.copy2(src, dst)
-        size = os.path.getsize(dst)
-        print(f"  ✓ {SCRIPT_NAME} ({size}B) → {dst}")
-    except Exception as e:
-        print(f"  [!] 复制失败: {e}")
-        success = False
+        else:
+            print(f"  [哈希] {SCRIPT_NAME} 不一致，更新...")
+            try:
+                shutil.copy2(src, dst)
+                size = os.path.getsize(dst)
+                print(f"  ✓ {SCRIPT_NAME} ({size}B) → {dst}")
+            except Exception as e:
+                print(f"  [!] 复制失败: {e}")
+                success = False
+    else:
+        try:
+            shutil.copy2(src, dst)
+            size = os.path.getsize(dst)
+            print(f"  ✓ {SCRIPT_NAME} ({size}B) → {dst}")
+        except Exception as e:
+            print(f"  [!] 复制失败: {e}")
+            success = False
+
+    # 同时复制 write_settings.py
+    helper_src = os.path.join(PACKAGE_DIR, "write_settings.py")
+    helper_dst = os.path.join(build_dir, "write_settings.py")
+    if os.path.isfile(helper_src):
+        if os.path.isfile(helper_dst) and file_hash(helper_src) == file_hash(helper_dst):
+            print(f"  [跳过] write_settings.py 哈希一致")
+        else:
+            try:
+                shutil.copy2(helper_src, helper_dst)
+                size = os.path.getsize(helper_dst)
+                print(f"  ✓ write_settings.py ({size}B) → {helper_dst}")
+            except Exception as e:
+                print(f"  [!] write_settings.py 复制失败: {e}")
+                success = False
+    else:
+        print(f"  [!] 缺失 write_settings.py，跳过")
+
     return success
 
 
