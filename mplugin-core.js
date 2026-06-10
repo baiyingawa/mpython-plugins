@@ -1170,7 +1170,7 @@
       try {
         var bMod = MP.get('beautify');
         if (bMod && bMod._consoleTimeout !== undefined) consoleTimeoutDisplay = bMod._consoleTimeout;
-        else { var st = localStorage.getItem('mplugin_console_hide_timeout'); if (st) consoleTimeoutDisplay = st; }
+        else if (bMod) consoleTimeoutDisplay = bMod._consoleTimeout || 10;
         if (bMod) consoleAutoHideOn = bMod._consoleAutoHide === true;
       } catch(e) {}
       var subBg = consoleAutoHideOn ? '#4caf50' : '#555';
@@ -1181,7 +1181,7 @@
             '<td style="padding:4px 8px 4px 20px;color:#888;font-size:11px;">控制台自动隐藏与显示</td>' +
             '<td style="padding:4px 8px;font-size:11px;"><span style="color:' + (consoleAutoHideOn ? '#4caf50' : '#888') + ';">' + subStatus + '</span></td>' +
             '<td style="padding:4px 8px;text-align:right;">' +
-              '<div style="display:inline-block;width:28px;height:16px;background:' + subBg + ';border-radius:8px;cursor:pointer;transition:background 0.2s;position:relative;vertical-align:middle;" onclick="var m=MP.get(\'beautify\');if(m){m._consoleAutoHide=m._consoleAutoHide!==true;if(m._consoleAutoHide){if(typeof m._startAutoHide===\'function\')m._startAutoHide()}else{if(typeof m._stopAutoHide===\'function\')m._stopAutoHide()}var p=document.getElementById(\'mplugin-panel\');if(p){p.innerHTML=MP._buildPanelHTML();MP._bindPanelHandlers()}}">' +
+              '<div style="display:inline-block;width:28px;height:16px;background:' + subBg + ';border-radius:8px;cursor:pointer;transition:background 0.2s;position:relative;vertical-align:middle;" onclick="var m=MP.get(\'beautify\');if(m){m._consoleAutoHide=m._consoleAutoHide!==true;if(m._consoleAutoHide){if(typeof m._startAutoHide===\'function\')m._startAutoHide()}else{if(typeof m._stopAutoHide===\'function\')m._stopAutoHide()}if(typeof m._saveSettings===\'function\')m._saveSettings();var p=document.getElementById(\'mplugin-panel\');if(p){p.innerHTML=MP._buildPanelHTML();MP._bindPanelHandlers()}}">' +
                 '<div style="position:absolute;top:2px;width:12px;height:12px;background:#fff;border-radius:50%;' + subDot + ';transition:left 0.2s,right 0.2s;"></div>' +
               '</div>' +
             '</td></tr>' +
@@ -1320,49 +1320,104 @@
       var _consoleHideTimeout = 10;
       var _consoleObservers = [];
 
+      // ====== 持久化存储 setting.json（通过 mqttHelper.exec 走 node） ======
+      function _getSettingsPath() {
+        try {
+          var href = window.location.href;
+          var appDir = decodeURIComponent(href.replace('file:///', '').replace(/\/[^\/]+$/, ''));
+          return appDir + '/build/setting.json';
+        } catch(e) { return null; }
+      }
+      function _saveSettings() {
+        var p = _getSettingsPath();
+        if (!p || !window.mqttHelper) return;
+        var data = JSON.stringify({
+          console_hide_timeout: _consoleHideTimeout,
+          console_auto_hide: MP.get('beautify') ? (MP.get('beautify')._consoleAutoHide === true) : false
+        });
+        // 用 node -e 写入 JSON，JSON.stringify 做转义保证安全
+        var cmd = 'node -e ' + JSON.stringify(
+          'require("fs").writeFileSync(' + JSON.stringify(p) + ', ' + JSON.stringify(data) + ', "utf8")'
+        );
+        window.mqttHelper.exec(cmd).catch(function(){});
+      }
+      function _loadSettings(callback) {
+        var p = _getSettingsPath();
+        if (!p || !window.mqttHelper) { if (callback) callback(); return; }
+        var cmd = 'node -e ' + JSON.stringify(
+          'var p=' + JSON.stringify(p) + ';try{console.log(require("fs").readFileSync(p,"utf8"))}catch(e){console.log("{}")}'
+        );
+        window.mqttHelper.exec(cmd).then(function(output) {
+          try {
+            var d = JSON.parse(output);
+            if (typeof d.console_hide_timeout === 'number') _consoleHideTimeout = d.console_hide_timeout;
+            var mod = MP.get('beautify');
+            if (mod) mod._consoleAutoHide = d.console_auto_hide === true;
+          } catch(e) {}
+          if (callback) callback();
+        }).catch(function() { if (callback) callback(); });
+      }
+
       function _startAutoHide() {
         if (_consolePoll) return;
-        try {
-          var saved = localStorage.getItem('mplugin_console_hide_timeout');
-          if (saved) _consoleHideTimeout = parseInt(saved, 10) || 10;
-        } catch(e) {}
         if (_consoleHideTimeout <= 0) { api.log('控制台自动隐藏: 超时=0 跳过'); return; }
 
         setTimeout(function() {
           try {
+            // 找终端区域（.xterm-screen 或 drag-up 所在区域）
+            var termEl = document.querySelector('.xterm-screen') || document.querySelector('.terminal.xterm');
             var dragBtn = document.querySelector('.drag-up');
-            var consoleArea = dragBtn ? dragBtn.closest('[class*="serial"], [class*="Serial"], .el-drawer, [class*="console"], [class*="right-panel"]') || dragBtn.parentElement : null;
-            if (!consoleArea) {
-              consoleArea = dragBtn ? dragBtn.closest('div') : null;
-              if (consoleArea) { var p = consoleArea; for (var i = 0; i < 10; i++) { if (p.offsetHeight > 100 || !p.parentElement) break; p = p.parentElement; } consoleArea = p; }
-            }
-            if (!consoleArea) { api.warn('控制台: 未找到 drag-up 容器'); return; }
-            api.log('控制台自动隐藏已启用 (' + _consoleHideTimeout + 's)');
+            if (!termEl && !dragBtn) { api.warn('控制台: 未找到终端区域'); return; }
+
+            // 用全局 mousemove 判断鼠标是否在终端区域内
+            var _mouseX = -1, _mouseY = -1;
+            var mouseH = function(e) { _mouseX = e.clientX; _mouseY = e.clientY; };
+            document.addEventListener('mousemove', mouseH);
+            _consoleObservers.push({ el: document, evt: 'mousemove', fn: mouseH });
 
             _manuallyCollapsed = false;
             var clickH = function(e) { var t = e.target; if (t && (t.classList.contains('drag-up') || t.closest('.drag-up'))) { _manuallyCollapsed = true; } };
             document.addEventListener('click', clickH, true);
             _consoleObservers.push({ el: document, evt: 'click', fn: clickH, cap: true });
 
+            function isMouseOverTerminal() {
+              // 检查鼠标是否在任意 xterm/terminal 元素或 drag-up 附近
+              var targets = document.querySelectorAll('.xterm-screen, .terminal.xterm, .xterm-viewport, .drag-up, .drag-unfold, [class*="console"], [class*="serial"]');
+              for (var i = 0; i < targets.length; i++) {
+                try {
+                  var r = targets[i].getBoundingClientRect();
+                  if (_mouseX >= r.left && _mouseX <= r.right && _mouseY >= r.top && _mouseY <= r.bottom) return true;
+                } catch(e) {}
+              }
+              return false;
+            }
+
             function expand() { if (_manuallyCollapsed) return; var b = document.querySelector('.drag-unfold'); if (b) { b.click(); } }
             function collapse() { _manuallyCollapsed = false; var b = document.querySelector('.drag-up'); var u = document.querySelector('.drag-unfold'); if (b && !u) { b.click(); } }
 
-            var enterH = function() { _manuallyCollapsed = false; if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; } };
-            var leaveH = function() { if (_hideTimer) clearTimeout(_hideTimer); _hideTimer = setTimeout(collapse, _consoleHideTimeout * 1000); };
-            consoleArea.addEventListener('mouseenter', enterH);
-            consoleArea.addEventListener('mouseleave', leaveH);
-            _consoleObservers.push({ el: consoleArea, evt: 'mouseenter', fn: enterH });
-            _consoleObservers.push({ el: consoleArea, evt: 'mouseleave', fn: leaveH });
-
+            // 轮询检测鼠标位置 + 定时收起
             _consolePoll = setInterval(function() {
               try {
-                if (!window.vm || !window.vm.$store || !window.vm.$store.state) return;
-                var term = window.vm.$store.state.term; if (!term) return;
-                var found = false;
-                for (var i = 0; i < term.buffer.active.length; i++) { var ln = term.buffer.active.getLine(i); if (ln && ln.translateToString().trim()) { found = true; break; } }
-                if (found && document.querySelector('.drag-unfold')) expand();
+                // 检查 xterm 新数据
+                if (!_manuallyCollapsed && window.vm && window.vm.$store && window.vm.$store.state) {
+                  var term = window.vm.$store.state.term;
+                  if (term) {
+                    for (var i = 0; i < term.buffer.active.length; i++) { var ln = term.buffer.active.getLine(i); if (ln && ln.translateToString().trim()) { if (document.querySelector('.drag-unfold')) { expand(); break; } } }
+                  }
+                }
+                // 鼠标在终端内 → 重置计时器
+                if (isMouseOverTerminal()) {
+                  _manuallyCollapsed = false;
+                  if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+                  return;
+                }
+                // 鼠标不在终端内 → 启动/延续计时器
+                if (!_hideTimer) {
+                  _hideTimer = setTimeout(collapse, _consoleHideTimeout * 1000);
+                }
               } catch(e) {}
-            }, 800);
+            }, 500);
+            api.log('控制台自动隐藏已启用 (' + _consoleHideTimeout + 's)');
           } catch(e) { api.err('控制台自动隐藏:', e.message); }
         }, 2000);
       }
@@ -1411,14 +1466,12 @@
 
       function _promptTimeout() {
         var cur = _consoleHideTimeout;
-        try { var s = localStorage.getItem('mplugin_console_hide_timeout'); if (s) cur = parseInt(s,10) || 10; } catch(e) {}
         _showPromptDialog('控制台自动隐藏等待时间（秒，0=禁用）', cur, function(val) {
           _consoleHideTimeout = val;
           try {
             var bm = MP.get('beautify'); if (bm) bm._consoleTimeout = _consoleHideTimeout;
-            localStorage.setItem('mplugin_console_hide_timeout', _consoleHideTimeout);
-            localStorage.setItem('mplugin_console_hide_prompted', '1');
           } catch(e) {}
+          _saveSettings();
           if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
         });
       }
@@ -1454,11 +1507,24 @@
         modDef._setConsoleTimeout = _promptTimeout;
         modDef._startAutoHide = _startAutoHide;
         modDef._stopAutoHide = _stopAutoHide;
+        modDef._saveSettings = _saveSettings;
         modDef._consoleTimeout = _consoleHideTimeout;
         modDef._consoleAutoHide = false;
         modDef.enabled = true;
       }
-      apply();
+      _loadSettings(function() {
+        if (modDef) {
+          modDef._consoleTimeout = _consoleHideTimeout;
+        } else {
+          apply();
+          return;
+        }
+        // 如果加载的设置中 console_auto_hide 为 true，自动启动
+        if (modDef._consoleAutoHide) {
+          _startAutoHide();
+        }
+        apply();
+      });
     }
   });
 
