@@ -392,20 +392,7 @@
               if (e.target.files && e.target.files[0]) {
                 var fullPath = e.target.files[0].path;
                 storePath(fullPath);
-                // 自动通过 mPython 打开文件（模拟打开本地操作）
-                try {
-                  var content = api.readFile(fullPath);
-                  if (content && window.vm && window.vm.$store) {
-                    var name = fullPath.replace(/^.*[\\/]/, '');
-                    var isXml = name.match(/\.mxml$/i);
-                    if (isXml) {
-                      window.vm.$store.commit('loadXMLCode', { title: name, xmlCode: content, notClear: false });
-                    } else {
-                      window.vm.$store.commit('openLocal', { name: name, data: content, path: fullPath });
-                    }
-                    api.log('打开:', name);
-                  }
-                } catch(openErr) { api.err('打开文件:', openErr.message); }
+                api.log('浏览:', fullPath);
               }
               e.target.value = '';
             } catch(ex) { api.err('picker:', ex.message); }
@@ -422,27 +409,19 @@
         startBackupTimer();
       }
 
-      // ====== 拦截 mPython "打开本地" 菜单 ======
-      function hookOpenLocal() {
-        // 轮询等待 .openLocal 元素出现
-        var tmr = setInterval(function() {
-          var el = document.querySelector('.openLocal');
-          if (!el || el._mpluginHooked) return;
-          el._mpluginHooked = true;
-          clearInterval(tmr);
-          el.addEventListener('click', function(e) {
-            // 如果是插件自身打开的文件，跳过
-            // 否则触发插件的文件选择器
-            if (filePicker) {
-              e.preventDefault();
-              e.stopPropagation();
-              filePicker.click();
-            }
-          }, true); // capture 阶段拦截
-          api.log('已拦截"打开本地"菜单');
-        }, 500);
-        // 5 秒后停止轮询
-        setTimeout(function() { clearInterval(tmr); }, 5000);
+      // ====== 监听 mPython 文件打开事件 ======
+      function watchFileOpen() {
+        try {
+          if (window.vm && window.vm.$store) {
+            window.vm.$store.subscribe(function(mutation, state) {
+              if (mutation.type === 'openLocal' && mutation.payload && mutation.payload.path) {
+                storePath(mutation.payload.path);
+                api.log('监测到打开文件:', mutation.payload.path);
+              }
+            });
+            api.log('已监听文件打开事件');
+          }
+        } catch(e) { api.err('watchFileOpen:', e.message); }
       }
 
       // ====== 点击处理 ======
@@ -742,7 +721,7 @@
         api.removeCache('mxml');
         userSetPath = false;
         createFilePicker();
-        hookOpenLocal();
+        watchFileOpen();
 
         var state = api.getState();
         api.log('启动', 'vm=' + !!window.vm, 'rD=' + (typeof window.routerDesk), 'store=' + (state ? '有' : '无'));
