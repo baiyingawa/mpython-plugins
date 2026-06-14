@@ -383,7 +383,7 @@
         try {
           filePicker = document.createElement('input');
           filePicker.type = 'file';
-          filePicker.accept = '.mxml';
+          filePicker.accept = '.mxml,.py';
           filePicker.style.display = 'none';
           filePicker.id = 'as-file-picker';
           document.body.appendChild(filePicker);
@@ -391,18 +391,58 @@
             try {
               if (e.target.files && e.target.files[0]) {
                 var fullPath = e.target.files[0].path;
-                if (moduleEls.pathDisp) moduleEls.pathDisp.textContent = fullPath;
-                api.setCache('mxml', { url: fullPath, absolutePath: fullPath });
-                userSetPath = true;
-                lastFileId = getCurrentFileId();
-                api.hideNotice();
-                startBackupTimer();
-                api.log('浏览:', fullPath);
+                storePath(fullPath);
+                // 自动通过 mPython 打开文件（模拟打开本地操作）
+                try {
+                  var content = api.readFile(fullPath);
+                  if (content && window.vm && window.vm.$store) {
+                    var name = fullPath.replace(/^.*[\\/]/, '');
+                    var isXml = name.match(/\.mxml$/i);
+                    if (isXml) {
+                      window.vm.$store.commit('loadXMLCode', { title: name, xmlCode: content, notClear: false });
+                    } else {
+                      window.vm.$store.commit('openLocal', { name: name, data: content, path: fullPath });
+                    }
+                    api.log('打开:', name);
+                  }
+                } catch(openErr) { api.err('打开文件:', openErr.message); }
               }
               e.target.value = '';
             } catch(ex) { api.err('picker:', ex.message); }
           });
         } catch(e) { api.err('createFilePicker:', e.message); }
+      }
+
+      function storePath(fullPath) {
+        if (moduleEls.pathDisp) moduleEls.pathDisp.textContent = fullPath;
+        api.setCache('mxml', { url: fullPath, absolutePath: fullPath });
+        userSetPath = true;
+        lastFileId = getCurrentFileId();
+        api.hideNotice();
+        startBackupTimer();
+      }
+
+      // ====== 拦截 mPython "打开本地" 菜单 ======
+      function hookOpenLocal() {
+        // 轮询等待 .openLocal 元素出现
+        var tmr = setInterval(function() {
+          var el = document.querySelector('.openLocal');
+          if (!el || el._mpluginHooked) return;
+          el._mpluginHooked = true;
+          clearInterval(tmr);
+          el.addEventListener('click', function(e) {
+            // 如果是插件自身打开的文件，跳过
+            // 否则触发插件的文件选择器
+            if (filePicker) {
+              e.preventDefault();
+              e.stopPropagation();
+              filePicker.click();
+            }
+          }, true); // capture 阶段拦截
+          api.log('已拦截"打开本地"菜单');
+        }, 500);
+        // 5 秒后停止轮询
+        setTimeout(function() { clearInterval(tmr); }, 5000);
       }
 
       // ====== 点击处理 ======
@@ -702,6 +742,7 @@
         api.removeCache('mxml');
         userSetPath = false;
         createFilePicker();
+        hookOpenLocal();
 
         var state = api.getState();
         api.log('启动', 'vm=' + !!window.vm, 'rD=' + (typeof window.routerDesk), 'store=' + (state ? '有' : '无'));
@@ -1328,7 +1369,7 @@
           var match = href.match(/^file:\/\/\/(.+?)\/[^\/]+\.html$/);
           if (match) {
             var decoded = decodeURIComponent(match[1]);
-            return decoded + '/build/setting.json';
+            return decoded + '/setting.json';
           }
           // 备用: 直接用 mplugin-core.js 的路径推断
           if (document.currentScript && document.currentScript.src) {
@@ -1359,26 +1400,30 @@
       function _loadSettings(callback) {
         var p = _getSettingsPath();
         api.log('设置: 从 ' + p + ' 加载');
-        if (!p || !window.mqttHelper) { api.warn('设置: 无法加载'); if (callback) callback(); return; }
-        var pythonExe = 'python';
-        var scriptDir = _getSettingsPath().replace(/\/[^\/]+$/, '');
-        var scriptPath = scriptDir + '/write_settings.py';
-        var cmd = pythonExe + ' ' + JSON.stringify(scriptPath) + ' read ' + JSON.stringify(p);
-        window.mqttHelper.exec(cmd)
-          .then(function(output) {
-            try {
-              var d = JSON.parse(output.trim());
-              if (typeof d.console_hide_timeout === 'number') _consoleHideTimeout = d.console_hide_timeout;
-              var mod = MP.get('beautify');
-              if (mod) mod._consoleAutoHide = d.console_auto_hide === true;
-              api.log('设置: 加载成功 timeout=' + _consoleHideTimeout + ' autoHide=' + (mod ? mod._consoleAutoHide : '?'));
-            } catch(e) { api.warn('设置: 解析失败: ' + e.message); }
-            if (callback) callback();
-          })
-          .catch(function(e) {
-            api.warn('设置: 读取失败(首次或无文件): ' + (e.message || e).substring(0, 80));
-            if (callback) callback();
-          });
+        if (!p || !window.mqttHelper) { api.warn('设置: 无法加载(无路径/mqttHelper)'); if (callback) callback(); return; }
+        try {
+          var scriptDir = _getSettingsPath().replace(/\/[^\/]+$/, '');
+          var scriptPath = scriptDir + '/write_settings.py';
+          var cmd = 'python ' + JSON.stringify(scriptPath) + ' read ' + JSON.stringify(p);
+          window.mqttHelper.exec(cmd)
+            .then(function(output) {
+              try {
+                var d = JSON.parse(output.trim());
+                if (typeof d.console_hide_timeout === 'number') _consoleHideTimeout = d.console_hide_timeout;
+                var mod = MP.get('beautify');
+                if (mod) mod._consoleAutoHide = d.console_auto_hide === true;
+                api.log('设置: 加载成功 timeout=' + _consoleHideTimeout + ' autoHide=' + (mod ? mod._consoleAutoHide : '?'));
+              } catch(e) { api.warn('设置: 解析失败: ' + e.message); }
+              if (callback) callback();
+            })
+            .catch(function(e) {
+              api.warn('设置: 读取失败: ' + ((e && e.message) || e || '').substring(0, 80));
+              if (callback) callback();
+            });
+        } catch(e) {
+          api.warn('设置: loadSettings 异常: ' + e.message);
+          if (callback) callback();
+        }
       }
 
       function _startAutoHide() {
@@ -1535,19 +1580,26 @@
         modDef._consoleAutoHide = false;
         modDef.enabled = true;
       }
-      _loadSettings(function() {
-        if (modDef) {
-          modDef._consoleTimeout = _consoleHideTimeout;
-        } else {
-          apply();
-          return;
-        }
-        // 如果加载的设置中 console_auto_hide 为 true，自动启动
-        if (modDef._consoleAutoHide) {
-          _startAutoHide();
-        }
-        apply();
-      });
+      // 先用默认值启动，避免 init 时 mqttHelper.exec 阻塞/502
+      // 同时尝试 localStorage 作为快速回退（旧版兼容）
+      try {
+        var oldTimeout = localStorage.getItem('mplugin_console_hide_timeout');
+        if (oldTimeout) { _consoleHideTimeout = parseInt(oldTimeout, 10) || 10; }
+      } catch(e) {}
+      apply();
+      // 异步加载 setting.json，加载成功后更新
+      setTimeout(function() {
+        _loadSettings(function() {
+          if (modDef) {
+            modDef._consoleTimeout = _consoleHideTimeout;
+            if (modDef._consoleAutoHide) {
+              _startAutoHide();
+            }
+            // 刷新面板显示
+            if (_panelEl) { _panelEl.innerHTML = buildPanelHTML(); bindPanelHandlers(); }
+          }
+        });
+      }, 5000);
     }
   });
 
