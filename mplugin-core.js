@@ -409,19 +409,27 @@
         startBackupTimer();
       }
 
-      // ====== 监听 mPython 文件打开事件 ======
-      function watchFileOpen() {
-        try {
-          if (window.vm && window.vm.$store) {
-            window.vm.$store.subscribe(function(mutation, state) {
-              if (mutation.type === 'openLocal' && mutation.payload && mutation.payload.path) {
-                storePath(mutation.payload.path);
-                api.log('监测到打开文件:', mutation.payload.path);
+      // ====== 监测 mPython 当前打开文件 ======
+      function watchCurrentFile() {
+        var lastPath = '';
+        setInterval(function() {
+          try {
+            var state = api.getState();
+            if (!state || !state.editorList) return;
+            for (var i = 0; i < state.editorList.length; i++) {
+              if (state.editorList[i].select) {
+                var curPath = state.editorList[i].absolutePath || state.editorList[i].path || '';
+                if (curPath && curPath !== lastPath) {
+                  lastPath = curPath;
+                  storePath(curPath);
+                  api.log('检测到当前文件:', curPath);
+                }
+                return;
               }
-            });
-            api.log('已监听文件打开事件');
-          }
-        } catch(e) { api.err('watchFileOpen:', e.message); }
+            }
+          } catch(e) { /* 静默 */ }
+        }, 1500);
+        api.log('已启动文件监测');
       }
 
       // ====== 点击处理 ======
@@ -721,7 +729,7 @@
         api.removeCache('mxml');
         userSetPath = false;
         createFilePicker();
-        watchFileOpen();
+        watchCurrentFile();
 
         var state = api.getState();
         api.log('启动', 'vm=' + !!window.vm, 'rD=' + (typeof window.routerDesk), 'store=' + (state ? '有' : '无'));
