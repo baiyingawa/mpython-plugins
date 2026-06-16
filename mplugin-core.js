@@ -409,29 +409,6 @@
         startBackupTimer();
       }
 
-      // ====== 监测 mPython 当前打开文件 ======
-      function watchCurrentFile() {
-        var lastPath = '';
-        setInterval(function() {
-          try {
-            var state = api.getState();
-            if (!state || !state.editorList) return;
-            for (var i = 0; i < state.editorList.length; i++) {
-              if (state.editorList[i].select) {
-                var curPath = state.editorList[i].absolutePath || state.editorList[i].path || '';
-                if (curPath && curPath !== lastPath) {
-                  lastPath = curPath;
-                  storePath(curPath);
-                  api.log('检测到当前文件:', curPath);
-                }
-                return;
-              }
-            }
-          } catch(e) { /* 静默 */ }
-        }, 1500);
-        api.log('已启动文件监测');
-      }
-
       // ====== 点击处理 ======
       MP.onBarClick(function(e) {
         try {
@@ -729,7 +706,47 @@
         api.removeCache('mxml');
         userSetPath = false;
         createFilePicker();
-        watchCurrentFile();
+
+        var state = api.getState();
+        api.log('启动', 'vm=' + !!window.vm, 'rD=' + (typeof window.routerDesk), 'store=' + (state ? '有' : '无'));
+        var shellKeys = [];
+        try { for (var k in window) if (k.match(/shell|electron|native|bridge/i)) shellKeys.push(k); } catch(ex) {}
+        if (shellKeys.length) api.log('shell API:', shellKeys.join(','));
+
+        // 监听文件打开事件（延迟等 vm/store 就绪）
+        function setupFileWatch() {
+          try {
+            if (!window.vm || !window.vm.$store) return false;
+            // 通道1: Vuex store subscribe
+            if (window.vm.$store.subscribe) {
+              window.vm.$store.subscribe(function(mutation, state) {
+                try {
+                  if (mutation.type === 'openLocal' && mutation.payload && mutation.payload.path) {
+                    var fp = mutation.payload.path;
+                    if (fp.match(/\.mxml$/i)) { storePath(fp); api.log('store捕获:', fp); }
+                  }
+                } catch(subErr) { api.err('store.sub:', subErr.message); }
+              });
+            }
+            // 通道2: Socket.IO 直接监听
+            if (window.vm.$socket && typeof window.vm.$socket.on === 'function') {
+              window.vm.$socket.on('openFiler', function(data) {
+                try {
+                  if (data && data.path && data.path.match(/\.mxml$/i)) { storePath(data.path); api.log('socket捕获:', data.path); }
+                } catch(e) {}
+              });
+            }
+            api.log('文件监听已启动');
+            return true;
+          } catch(e) { api.err('setupFileWatch:', e.message); return false; }
+        }
+        if (!setupFileWatch()) {
+          // vm 还没就绪，轮询等待
+          var fwTimer = setInterval(function() {
+            if (setupFileWatch()) clearInterval(fwTimer);
+          }, 500);
+          setTimeout(function() { clearInterval(fwTimer); }, 10000); // 最多等10秒
+        }
 
         var state = api.getState();
         api.log('启动', 'vm=' + !!window.vm, 'rD=' + (typeof window.routerDesk), 'store=' + (state ? '有' : '无'));
