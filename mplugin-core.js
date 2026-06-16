@@ -1607,6 +1607,140 @@
     }
   });
 
+  // ================================================================
+  //  模块 - updater（自动更新）
+  // ================================================================
+
+  MP.register('updater', {
+    name: '版本更新',
+
+    init: function(api) {
+      var _latestVer = null;
+      var _latestUrl = null;
+      var _checking = false;
+      var _downloading = false;
+
+      function cmpVer(a, b) {
+        var pa = a.split('.').map(Number);
+        var pb = b.split('.').map(Number);
+        for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+          var va = pa[i] || 0, vb = pb[i] || 0;
+          if (va < vb) return -1;
+          if (va > vb) return 1;
+        }
+        return 0;
+      }
+
+      function checkUpdate(callback) {
+        if (_checking) return;
+        _checking = true;
+        api.log('检查更新...');
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.open('GET', 'https://api.github.com/repos/baiyingawa/mpython-plugins/releases/latest', false);
+          xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+          xhr.send();
+          if (xhr.status === 200) {
+            var rel = JSON.parse(xhr.responseText);
+            _latestVer = (rel.tag_name || '').replace(/^v/i, '');
+            _latestUrl = rel.assets && rel.assets[0] && rel.assets[0].browser_download_url || '';
+            if (_latestVer && cmpVer(_latestVer, VERSION) > 0) {
+              api.log('发现新版本: v' + _latestVer);
+              api.showNotice('发现新版本 v' + _latestVer + '！点击面板更新', '#4ecdc4');
+            } else {
+              api.log('已是最新版本 v' + VERSION);
+            }
+            if (callback) callback(_latestVer);
+          } else {
+            api.warn('检查更新失败: HTTP ' + xhr.status);
+          }
+        } catch(e) { api.err('检查更新失败:', e.message); }
+        _checking = false;
+      }
+
+      function doUpdate() {
+        if (_downloading || !_latestUrl) return;
+        _downloading = true;
+        api.showNotice('正在下载 v' + _latestVer + '...', '#ff9800');
+        api.log('下载:', _latestUrl);
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.open('GET', _latestUrl, true);
+          xhr.responseType = 'arraybuffer';
+          xhr.onload = function() {
+            if (xhr.status === 200 || xhr.status === 0) {
+              var data = new Uint8Array(xhr.response);
+              var arrStr = '[' + Array.prototype.join.call(data, ',') + ']';
+              var appDir = _getAppDir();
+              var dlPath = appDir + '/build/mpython-mplugins-' + _latestVer + '.zip';
+              api.showNotice('下载完成，正在安装...', '#4ecdc4');
+              // 用 Python 写 zip 文件并安装
+              var pyCode = 'import sys;open(sys.argv[1],"wb").write(bytes(eval(sys.argv[2])))';
+              window.mqttHelper.exec(
+                'python -c ' + JSON.stringify(pyCode) + ' ' + JSON.stringify(dlPath) + ' ' + JSON.stringify(arrStr)
+              ).then(function() {
+                // 写完后运行安装
+                var installPath = dlPath.replace(/\/[^\/]+$/, '/install.py');
+                return window.mqttHelper.exec('python ' + JSON.stringify(installPath));
+              }).then(function() {
+                api.showNotice('更新完成！请重启 mPython', '#4caf50');
+                api.log('更新完成: v' + _latestVer);
+                _downloading = false;
+              }).catch(function(e) {
+                api.err('更新失败:', (e && e.message) || e);
+                api.showNotice('更新失败！', '#e94560');
+                _downloading = false;
+              });
+            } else {
+              api.err('下载失败:', xhr.status);
+              api.showNotice('下载失败！', '#e94560');
+              _downloading = false;
+            }
+          };
+          xhr.onerror = function() {
+            api.err('下载失败: 网络错误');
+            api.showNotice('下载失败！', '#e94560');
+            _downloading = false;
+          };
+          xhr.send();
+        } catch(e) {
+          api.err('下载异常:', e.message);
+          api.showNotice('下载异常！', '#e94560');
+          _downloading = false;
+        }
+      }
+
+      function _getAppDir() {
+        try {
+          var href = window.location.href;
+          var m = href.match(/^file:\/\/\/(.+?)\/[^\/]+\.html$/);
+          if (m) return decodeURIComponent(m[1]);
+        } catch(e) {}
+        return '';
+      }
+
+      setTimeout(function() { checkUpdate(); }, 8000);
+
+      var modDef = MP.get('updater');
+      if (modDef) {
+        modDef.toggle = function() {
+          checkUpdate(function(ver) {
+            if (ver && cmpVer(ver, VERSION) > 0) {
+              if (confirm('发现新版本 v' + ver + '，是否下载更新？')) {
+                doUpdate();
+              }
+            } else {
+              api.showNotice('已是最新版 v' + VERSION, '#4caf50');
+              setTimeout(api.hideNotice, 3000);
+            }
+          });
+        };
+        modDef.busy = false;
+        modDef.enabled = true;
+      }
+    }
+  });
+
   // === 终端控制台读取测试 ===
   function testXtermRead() {
     setTimeout(function() {
