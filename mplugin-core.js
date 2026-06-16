@@ -1,5 +1,5 @@
 /**
- * MPlugins — mPython 插件框架 v1.70
+ * MPlugins — mPython 插件框架 v1.80
  * - 框架核心：日志、顶栏引擎、模块注册表、workspace/API 工具
  * - 模块集成：autosave（自动保存）
  * - 框架自动维护顶栏生命期，模块只管注册自己的逻辑
@@ -11,7 +11,7 @@
   //  第一部分：框架核心
   // ================================================================
 
-  var VERSION = '1.70';
+  var VERSION = '1.80';
   var LOG = [];
   // 统一的间距 CSS（所有 body 子元素下移，插件自身除外）
   var SPACER_CSS = 'body>#app{margin-top:28px!important}';
